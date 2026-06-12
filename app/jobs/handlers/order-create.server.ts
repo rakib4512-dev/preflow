@@ -42,6 +42,10 @@ export async function handleOrderCreate(
     .filter((li) => li.product_id != null)
     .map((li) => `gid://shopify/Product/${li.product_id}`);
 
+  console.log("[order-create] shop:", shop, "shopId:", shopRecord.id);
+  console.log("[order-create] variantGids:", variantGids);
+  console.log("[order-create] productGids:", productGids);
+
   const configs = await prisma.preorderConfig.findMany({
     where: {
       shopId: shopRecord.id,
@@ -53,7 +57,16 @@ export async function handleOrderCreate(
     },
   });
 
-  if (configs.length === 0) return;
+  console.log("[order-create] matched configs:", configs.length);
+
+  if (configs.length === 0) {
+    const allEnabled = await prisma.preorderConfig.findMany({
+      where: { shopId: shopRecord.id, enabled: true },
+      select: { productId: true, variantId: true },
+    });
+    console.log("[order-create] all enabled configs:", JSON.stringify(allEnabled));
+    return;
+  }
 
   // create + P2002-catch instead of upsert: we must know whether this order
   // was seen before, so a duplicate webhook run never double-counts usage.
