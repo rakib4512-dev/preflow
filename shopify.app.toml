@@ -1,7 +1,7 @@
 # Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
 
 client_id = "825a0fd7d7b6c74ddd9bdb0ccec10493"
-application_url = "https://example.com"
+application_url = "https://preflow-production.up.railway.app"
 embedded = true
 name = "PreFlow"
 
@@ -43,10 +43,10 @@ api_version = "2026-04"
   #   /webhooks/shop/redact
 
 [auth]
-redirect_urls = [ "https://example.com/api/auth" ]
+redirect_urls = [ "https://preflow-production.up.railway.app/auth/callback" ]
 
 [app_proxy]
-url = "https://example.com/apps/preorder"
+url = "https://preflow-production.up.railway.app/apps/preorder"
 subpath = "preorder"
 prefix = "apps"
 
