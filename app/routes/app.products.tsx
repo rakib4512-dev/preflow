@@ -41,6 +41,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const url = new URL(request.url);
   const query = url.searchParams.get("q") ?? "";
 
+  try {
+    return await loadProducts(admin, session, query);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[app.products] loader failed:", err);
+    return { products: [] as ProductItem[], query, loadError: message };
+  }
+};
+
+async function loadProducts(
+  admin: Awaited<ReturnType<typeof authenticate.admin>>["admin"],
+  session: Awaited<ReturnType<typeof authenticate.admin>>["session"],
+  query: string,
+) {
   const res = await admin.graphql(
     `#graphql
     query SearchProducts($query: String!) {
@@ -96,11 +110,26 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     },
   );
 
-  return { products, query };
-};
+  return { products, query, loadError: null as string | null };
+}
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
+  try {
+    return await handleAction(request, admin, session);
+  } catch (err) {
+    // Surface the real error as a banner instead of a blank "Application Error"
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[app.products] action failed:", err);
+    return Response.json({ success: false, error: message });
+  }
+};
+
+async function handleAction(
+  request: Request,
+  admin: Awaited<ReturnType<typeof authenticate.admin>>["admin"],
+  session: Awaited<ReturnType<typeof authenticate.admin>>["session"],
+) {
   const formData = await request.formData();
   const intent = formData.get("intent") as string;
   const productId = formData.get("productId") as string;
@@ -222,10 +251,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
   }
 
   return Response.json({ error: "Unknown intent" }, { status: 400 });
-};
+}
 
 export default function ProductsPage() {
-  const { products, query: initialQuery } = useLoaderData<typeof loader>();
+  const { products, query: initialQuery, loadError } = useLoaderData<typeof loader>();
   const fetcher = useFetcher<typeof action>();
   const [query, setQuery] = useState(initialQuery);
   const [selectedProduct, setSelectedProduct] = useState<ProductItem | null>(null);
@@ -367,6 +396,11 @@ export default function ProductsPage() {
               {actionError && (
                 <Banner tone="critical" onDismiss={() => setActionError(null)}>
                   <p>{actionError}</p>
+                </Banner>
+              )}
+              {loadError && (
+                <Banner tone="critical">
+                  <p>Could not load products: {loadError}</p>
                 </Banner>
               )}
               <TextField

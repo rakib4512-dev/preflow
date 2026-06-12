@@ -51,22 +51,26 @@ export async function enablePreorder(input: EnablePreorderInput): Promise<SagaRe
   const { shopId, productId, variantId = "", message, shipDate, admin } = input;
   const normalizedVariantId = variantId || "";
 
-  // Reuse an existing selling plan group on re-enable instead of leaking a new
-  // group each time.
-  const existing = await prisma.preorderConfig.findUnique({
-    where: {
-      shopId_productId_variantId: { shopId, productId, variantId: normalizedVariantId },
-    },
-    select: { sellingPlanGid: true, sellingPlanId: true, policySnapshot: true },
-  });
-
-  let sellingPlanGid: string | null = existing?.sellingPlanGid ?? null;
-  let sellingPlanId: string | null = existing?.sellingPlanId ?? null;
+  let sellingPlanGid: string | null = null;
+  let sellingPlanId: string | null = null;
   let createdGroupThisCall = false;
   let metafieldsWritten = false;
   let policySnapshot: PolicySnapshot | null = null;
+  let existing: { sellingPlanGid: string | null; sellingPlanId: string | null; policySnapshot: unknown } | null = null;
 
   try {
+    // Reuse an existing selling plan group on re-enable instead of leaking a
+    // new group each time. Inside the try so DB errors (e.g. missing columns
+    // when migrations haven't run) surface as a result, not a 500.
+    existing = await prisma.preorderConfig.findUnique({
+      where: {
+        shopId_productId_variantId: { shopId, productId, variantId: normalizedVariantId },
+      },
+      select: { sellingPlanGid: true, sellingPlanId: true, policySnapshot: true },
+    });
+    sellingPlanGid = existing?.sellingPlanGid ?? null;
+    sellingPlanId = existing?.sellingPlanId ?? null;
+
     // Step 1: Create selling plan group (unless one already exists)
     if (!sellingPlanGid || !sellingPlanId) {
       const created = await createSellingPlanGroup(admin, productId, message);
