@@ -8,7 +8,7 @@ import { handleOrderCreate } from "../jobs/handlers/order-create.server";
 // so usage counts, dashboard numbers, and confirmation emails self-heal.
 // Throttled per shop; runs from the dashboard loader.
 
-const SWEEP_INTERVAL_MS = 10 * 60 * 1000; // at most once per 10 minutes
+const SWEEP_INTERVAL_MS = 2 * 60 * 1000; // at most once per 2 minutes
 const LOOKBACK_DAYS = 7;
 
 export async function reconcileRecentOrders(

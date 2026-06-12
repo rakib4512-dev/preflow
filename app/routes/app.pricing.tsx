@@ -13,6 +13,7 @@ import {
   List,
   Divider,
   Box,
+  Banner,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
 import { authenticate } from "../shopify.server";
@@ -82,7 +83,20 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
-  const formData = await request.formData();
+  try {
+    return await handleBilling(admin, session, await request.formData());
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[app.pricing] action failed:", err);
+    return Response.json({ error: message });
+  }
+};
+
+async function handleBilling(
+  admin: Awaited<ReturnType<typeof authenticate.admin>>["admin"],
+  session: Awaited<ReturnType<typeof authenticate.admin>>["session"],
+  formData: FormData,
+) {
   const intent = formData.get("intent") as string;
   const plan = formData.get("plan") as Plan;
 
@@ -124,6 +138,21 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const planConfig = PLANS[plan];
   const returnUrl = `${process.env.SHOPIFY_APP_URL}/app/pricing`;
+
+  // Development stores can never approve REAL charges — Shopify rejects the
+  // confirmation. Detect them and always create test charges there, regardless
+  // of NODE_ENV. SHOPIFY_BILLING_TEST=true forces test charges everywhere.
+  const shopRes = await admin.graphql(
+    `#graphql query ShopPlan { shop { plan { partnerDevelopment } } }`,
+  );
+  const shopJson = (await shopRes.json()) as {
+    data?: { shop?: { plan?: { partnerDevelopment?: boolean } } };
+  };
+  const isDevStore = Boolean(shopJson.data?.shop?.plan?.partnerDevelopment);
+  const useTestCharge =
+    isDevStore ||
+    process.env.NODE_ENV !== "production" ||
+    process.env.SHOPIFY_BILLING_TEST === "true";
 
   // GROWTH bills overage at $0.05/order via usage records, capped at the
   // price difference to PRO — so its subscription needs a usage line item.
@@ -171,7 +200,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
         name: planConfig.name,
         lineItems,
         returnUrl,
-        test: process.env.NODE_ENV !== "production",
+        test: useTestCharge,
       },
     },
   );
@@ -184,7 +213,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const confirmationUrl: string = json.data?.appSubscriptionCreate?.confirmationUrl;
   return Response.json({ confirmationUrl });
-};
+}
 
 export default function PricingPage() {
   const { currentPlan, usage } = useLoaderData<typeof loader>();
@@ -227,10 +256,20 @@ export default function PricingPage() {
 
   const plans: Plan[] = ["FREE", "GROWTH", "PRO"];
 
+  const billingError =
+    fetcher.data && "error" in fetcher.data
+      ? (fetcher.data as { error: string }).error
+      : null;
+
   return (
     <Page>
       <TitleBar title="Pricing" />
       <BlockStack gap="500">
+        {billingError && (
+          <Banner tone="critical" title="Billing error">
+            <p>{billingError}</p>
+          </Banner>
+        )}
         <Card>
           <BlockStack gap="300">
             <Text variant="headingLg" as="h2">
