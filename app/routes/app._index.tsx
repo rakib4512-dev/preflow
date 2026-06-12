@@ -18,6 +18,7 @@ import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 import { PLANS, usagePercent } from "../lib/billing.shared";
 import { resetCycleIfNeeded } from "../lib/billing.server";
+import { reconcileRecentOrders } from "../lib/reconcile-orders.server";
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
@@ -28,6 +29,11 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     select: { id: true },
   });
   if (shopForCycle) await resetCycleIfNeeded(shopForCycle.id);
+
+  // Backfill any orders whose webhooks never arrived (throttled to 1/10min)
+  await reconcileRecentOrders(admin, session.shop).catch((err) =>
+    console.error("[dashboard] reconcile failed:", err),
+  );
 
   const shop = await prisma.shop.findUnique({
     where: { shop: session.shop },
