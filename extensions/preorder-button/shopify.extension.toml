@@ -1,0 +1,10 @@
+api_version = "2026-07"
+uid = "6d3c1eb9-fc30-5d6e-91fc-3f1a570d43797259eb05"
+
+[[extensions]]
+type = "theme"
+name = "PreFlow Pre-order Button"
+handle = "preorder-button"
+
+  [extensions.development]
+  status = "enabled"

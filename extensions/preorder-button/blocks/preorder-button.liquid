@@ -1,0 +1,283 @@
+{% comment %}
+  PreFlow pre-order button block.
+  Constraint: NEVER touches theme DOM elements. Renders own button only.
+  Layer 1: Liquid renders correct state from metafields (cache-safe).
+  Layer 2: Deferred JS revalidates live state via App Proxy.
+{% endcomment %}
+
+{% assign preorder_enabled = product.metafields['$app:preorder'].enabled.value %}
+{% assign preorder_message = product.metafields['$app:preorder'].message.value | default: block.settings.button_text %}
+{% assign preorder_ship_date = product.metafields['$app:preorder'].ship_date.value %}
+{% assign preorder_selling_plan_id = product.metafields['$app:preorder'].selling_plan_id.value %}
+
+{%- if preorder_enabled -%}
+<div
+  id="preflow-preorder-wrapper"
+  data-product-id="{{ product.id }}"
+  data-variant-id="{{ product.selected_or_first_available_variant.id }}"
+  data-selling-plan-id="{{ preorder_selling_plan_id }}"
+  data-redirect="{{ block.settings.after_click | default: 'checkout' }}"
+  data-proxy-url="{{ shop.url }}/apps/preorder/state"
+  style="
+    --preflow-btn-color: {{ block.settings.button_color }};
+    --preflow-btn-text-color: {{ block.settings.button_text_color }};
+  "
+>
+  {%- comment -%}Hide the native buy button using scoped CSS within this block only.{%- endcomment -%}
+  <style>
+    #preflow-preorder-wrapper ~ .product-form__buttons,
+    #preflow-preorder-wrapper ~ form[action*="/cart/add"],
+    #preflow-preorder-wrapper ~ .shopify-payment-button {
+      display: none !important;
+    }
+  </style>
+
+  <div id="preflow-preorder-content">
+    {%- comment -%}
+      The button does NOT depend on the theme's form ID (only Dawn uses
+      product-form-{section.id}). It adds the item to the cart through
+      /cart/add.js with the selling plan attached, then redirects.
+    {%- endcomment -%}
+    <button
+      id="preflow-preorder-btn"
+      type="button"
+      class="preflow-btn"
+      style="
+        background-color: var(--preflow-btn-color, #000);
+        color: var(--preflow-btn-text-color, #fff);
+        width: 100%;
+        padding: 16px;
+        border: none;
+        border-radius: 4px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        line-height: 1;
+      "
+    >
+      {{ preorder_message }}
+    </button>
+    <p id="preflow-preorder-error" style="display:none;margin-top:8px;font-size:13px;text-align:center;color:#d82c0d;"></p>
+
+    {%- if preorder_ship_date != blank -%}
+      <p class="preflow-ship-date" style="margin-top:8px;font-size:14px;text-align:center;">
+        {{ 'preorder.ships_by' | t: date: preorder_ship_date }}
+      </p>
+    {%- elsif block.settings.subtext != blank -%}
+      <p id="preflow-preorder-subtext" style="margin-top:8px;font-size:12px;text-align:center;color:#666;">
+        {{ block.settings.subtext }}
+      </p>
+    {%- endif -%}
+  </div>
+</div>
+
+<script>
+  (function () {
+    var wrapper = document.getElementById('preflow-preorder-wrapper');
+    if (!wrapper) return;
+    var proxyUrl = wrapper.dataset.proxyUrl;
+    var variantId = wrapper.dataset.variantId;
+    var productId = wrapper.dataset.productId;
+
+    // Ensure the selling_plan input is inside the real cart form, not only
+    // associated via the form= attribute (theme form IDs vary outside Dawn).
+    function syncSellingPlanInput(planId) {
+      var forms = document.querySelectorAll('form[action*="/cart/add"]');
+      forms.forEach(function (form) {
+        var input = form.querySelector('input[name="selling_plan"].preflow-selling-plan-input');
+        if (!planId) {
+          if (input) input.remove();
+          return;
+        }
+        if (!input) {
+          input = document.createElement('input');
+          input.type = 'hidden';
+          input.name = 'selling_plan';
+          input.className = 'preflow-selling-plan-input';
+          form.appendChild(input);
+        }
+        input.value = planId;
+      });
+    }
+
+    syncSellingPlanInput(wrapper.dataset.sellingPlanId);
+
+    // --- Pre-order button: add to cart via the Cart API, then redirect. ---
+    // Deliberately independent of the theme's product form: outside Dawn the
+    // form ID "product-form-{section.id}" doesn't exist, so a submit-button
+    // association silently does nothing.
+    var btnEl = document.getElementById('preflow-preorder-btn');
+    var errEl = document.getElementById('preflow-preorder-error');
+
+    function showError(msg) {
+      if (!errEl) return;
+      errEl.textContent = msg || 'Could not add to cart. Please try again.';
+      errEl.style.display = '';
+    }
+
+    function getQuantity() {
+      var qtyInput = document.querySelector(
+        'form[action*="/cart/add"] input[name="quantity"], input[name="quantity"]'
+      );
+      var qty = qtyInput ? parseInt(qtyInput.value, 10) : 1;
+      return qty > 0 ? qty : 1;
+    }
+
+    if (btnEl) {
+      btnEl.addEventListener('click', function () {
+        var vid = parseInt(wrapper.dataset.variantId, 10);
+        if (!vid) { showError('Please select a variant first.'); return; }
+
+        var item = { id: vid, quantity: getQuantity() };
+        var planId = parseInt(wrapper.dataset.sellingPlanId, 10);
+        if (planId) item.selling_plan = planId;
+
+        btnEl.disabled = true;
+        var originalText = btnEl.textContent;
+        btnEl.textContent = 'Adding…';
+        if (errEl) errEl.style.display = 'none';
+
+        fetch('/cart/add.js', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+          body: JSON.stringify({ items: [item] }),
+        })
+          .then(function (r) {
+            return r.json().then(function (body) { return { ok: r.ok, body: body }; });
+          })
+          .then(function (res) {
+            if (!res.ok) {
+              btnEl.disabled = false;
+              btnEl.textContent = originalText;
+              showError(res.body && (res.body.description || res.body.message));
+              return;
+            }
+            var dest = wrapper.dataset.redirect === 'cart' ? '/cart' : '/checkout';
+            window.location.href = dest;
+          })
+          .catch(function () {
+            btnEl.disabled = false;
+            btnEl.textContent = originalText;
+            showError(null);
+          });
+      });
+    }
+
+    function revalidate(vid) {
+      if (!proxyUrl || !vid) return;
+      fetch(proxyUrl + '?variant_id=' + vid + '&product_id=' + (productId || ''))
+        .then(function (r) { return r.json(); })
+        .then(function (state) {
+          var content = document.getElementById('preflow-preorder-content');
+          if (!content) return;
+          if (!state.enabled) {
+            wrapper.style.display = 'none';
+            syncSellingPlanInput(null);
+            // Restore native buy button siblings
+            var siblings = wrapper.parentElement ? wrapper.parentElement.querySelectorAll('.product-form__buttons, .shopify-payment-button') : [];
+            siblings.forEach(function (el) { el.style.removeProperty('display'); });
+          } else {
+            // Keep the dataset fresh — the buy-button click handler reads it
+            if (state.selling_plan_id) wrapper.dataset.sellingPlanId = String(state.selling_plan_id);
+            syncSellingPlanInput(state.selling_plan_id || wrapper.dataset.sellingPlanId);
+            var btn = document.getElementById('preflow-preorder-btn');
+            if (btn && state.message) btn.textContent = state.message;
+            var shipEl = content.querySelector('.preflow-ship-date');
+            var subtextEl = document.getElementById('preflow-preorder-subtext');
+            if (state.ship_date) {
+              if (!shipEl) {
+                shipEl = document.createElement('p');
+                shipEl.className = 'preflow-ship-date';
+                shipEl.style.cssText = 'margin-top:8px;font-size:14px;text-align:center;';
+                content.appendChild(shipEl);
+              }
+              shipEl.textContent = 'Ships by ' + state.ship_date;
+              // hide subtext — ship date takes priority
+              if (subtextEl) subtextEl.style.display = 'none';
+            } else {
+              if (shipEl) shipEl.remove();
+              // restore "Ships when available" if it exists, or create it from the fallback
+              if (subtextEl) {
+                subtextEl.style.display = '';
+              } else {
+                var fallback = '{{ block.settings.subtext | escape }}';
+                if (fallback) {
+                  var newSubtext = document.createElement('p');
+                  newSubtext.id = 'preflow-preorder-subtext';
+                  newSubtext.style.cssText = 'margin-top:8px;font-size:12px;text-align:center;color:#666;';
+                  newSubtext.textContent = fallback;
+                  content.appendChild(newSubtext);
+                }
+              }
+            }
+          }
+        })
+        .catch(function () { /* fail silently — Layer 1 already correct */ });
+    }
+
+    // Layer 2: revalidate on load
+    revalidate(variantId);
+
+    // Handle variant switches
+    document.addEventListener('variant:change', function (e) {
+      var vid = e.detail && (e.detail.variantId || (e.detail.variant && e.detail.variant.id));
+      if (vid) {
+        wrapper.dataset.variantId = vid;
+        revalidate(String(vid));
+      }
+    });
+
+    // Also watch for Shopify's native variant change events
+    document.addEventListener('change', function (e) {
+      var target = e.target;
+      if (target && target.form && target.name === 'id') {
+        wrapper.dataset.variantId = target.value;
+        revalidate(target.value);
+      }
+    });
+  })();
+</script>
+{%- endif -%}
+
+{% schema %}
+{
+  "name": "Pre-order Button",
+  "target": "section",
+  "settings": [
+    {
+      "type": "text",
+      "id": "button_text",
+      "label": "Default button text",
+      "default": "Pre-order now"
+    },
+    {
+      "type": "text",
+      "id": "subtext",
+      "label": "Subtext below button",
+      "default": "Ships when available"
+    },
+    {
+      "type": "select",
+      "id": "after_click",
+      "label": "After clicking the button",
+      "options": [
+        { "value": "checkout", "label": "Go straight to checkout" },
+        { "value": "cart", "label": "Go to cart page" }
+      ],
+      "default": "checkout"
+    },
+    {
+      "type": "color",
+      "id": "button_color",
+      "label": "Button background color",
+      "default": "#000000"
+    },
+    {
+      "type": "color",
+      "id": "button_text_color",
+      "label": "Button text color",
+      "default": "#ffffff"
+    }
+  ]
+}
+{% endschema %}

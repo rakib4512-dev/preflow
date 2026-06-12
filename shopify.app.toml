@@ -1,0 +1,55 @@
+# Learn more about configuring your app at https://shopify.dev/docs/apps/tools/cli/configuration
+
+client_id = "825a0fd7d7b6c74ddd9bdb0ccec10493"
+application_url = "https://example.com"
+embedded = true
+name = "PreFlow"
+
+[access_scopes]
+scopes = "write_products,read_products,write_orders,read_orders,write_fulfillments,read_fulfillments,write_merchant_managed_fulfillment_orders,read_merchant_managed_fulfillment_orders,read_inventory,write_inventory,write_purchase_options"
+
+# Keep in sync with ApiVersion in app/shopify.server.ts
+[webhooks]
+api_version = "2026-04"
+
+  # orders/create is registered programmatically via afterAuth in shopify.server.ts
+  # (avoids CLI's protected-customer-data check on unapproved dev apps)
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/products/update"
+  topics = [ "products/update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/products/delete"
+  topics = [ "products/delete" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app_subscriptions/update"
+  topics = [ "app_subscriptions/update" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/uninstalled"
+  topics = [ "app/uninstalled" ]
+
+  [[webhooks.subscriptions]]
+  uri = "/webhooks/app/scopes_update"
+  topics = [ "app/scopes_update" ]
+
+  # GDPR mandatory webhooks are NOT registered here.
+  # Shopify calls them based on the URLs set in the Partner Dashboard under
+  # "App setup → Customer data / privacy". The route handlers still exist at:
+  #   /webhooks/customers/data_request
+  #   /webhooks/customers/redact
+  #   /webhooks/shop/redact
+
+[auth]
+redirect_urls = [ "https://example.com/api/auth" ]
+
+[app_proxy]
+url = "https://example.com/apps/preorder"
+subpath = "preorder"
+prefix = "apps"
+
+[build]
+include_config_on_deploy = true
+automatically_update_urls_on_dev = true

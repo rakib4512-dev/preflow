@@ -1,0 +1,6 @@
+name = "remix"
+roles = ["frontend", "backend"]
+
+[commands]
+predev = "npm exec prisma generate"
+dev = "npm exec prisma db push --accept-data-loss && npm exec remix vite:dev"
