@@ -2,10 +2,8 @@ generator client {
   provider = "prisma-client-js"
 }
 
-// Local dev: sqlite (no server needed). For production change to "postgresql"
-// and update DATABASE_URL + shopify.web.toml dev command to "prisma migrate deploy".
 datasource db {
-  provider = "sqlite"
+  provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
@@ -41,7 +39,7 @@ model Shop {
   plan           Plan      @default(FREE)
   usageThisCycle Int       @default(0)
   cycleStart     DateTime  @default(now())
-  settings       Json      @default(dbgenerated("'{}'"))
+  settings       Json      @default("{}")
   uninstalledAt  DateTime?
   lastSeenAt     DateTime?
   createdAt      DateTime  @default(now())
