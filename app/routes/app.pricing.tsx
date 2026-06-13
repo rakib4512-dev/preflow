@@ -145,7 +145,9 @@ async function handleBilling(
   const shopRes = await admin.graphql(
     `#graphql query ShopPlan { shop { plan { partnerDevelopment } } }`,
   );
-  const shopJson = (await shopRes.json()) as {
+  const shopText = await shopRes.text();
+  console.log("[billing] ShopPlan response:", shopText);
+  const shopJson = JSON.parse(shopText) as {
     data?: { shop?: { plan?: { partnerDevelopment?: boolean } } };
   };
   const isDevStore = Boolean(shopJson.data?.shop?.plan?.partnerDevelopment);
@@ -205,7 +207,9 @@ async function handleBilling(
     },
   );
 
-  const json = await res.json();
+  const resText = await res.text();
+  console.log("[billing] CreateSubscription response:", resText);
+  const json = JSON.parse(resText);
   const errors = json.data?.appSubscriptionCreate?.userErrors ?? [];
   if (errors.length > 0) {
     return Response.json({ error: JSON.stringify(errors) }, { status: 400 });
