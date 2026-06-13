@@ -107,14 +107,22 @@ async function sendConfirmationEmail(
   configs: Array<{ shipDate: Date | null }>,
 ): Promise<void> {
   const customerEmail = order.email ?? order.customer?.email ?? null;
-  if (!customerEmail) return; // PCD not approved or guest checkout without email
+  console.log("[order-create] sendConfirmationEmail customerEmail:", customerEmail);
+  if (!customerEmail) {
+    console.warn("[order-create] no customerEmail in payload — PCD not approved or guest order");
+    return;
+  }
 
   const orderGid = order.admin_graphql_api_id;
   const dedupeKey = `${orderGid}:confirmation`;
   const existing = await prisma.customerNotification.findUnique({ where: { dedupeKey } });
-  if (existing) return;
+  if (existing) {
+    console.log("[order-create] confirmation already sent for", orderGid);
+    return;
+  }
 
   const appUrl = process.env.SHOPIFY_APP_URL ?? "";
+  console.log("[order-create] appUrl:", appUrl);
   if (!appUrl) return;
 
   const shopSettings = await prisma.shop.findUnique({
@@ -143,6 +151,7 @@ async function sendConfirmationEmail(
     introText,
   });
 
+  console.log("[order-create] sending email from:", fromEmail, "to:", customerEmail);
   await resend.emails.send({
     from: fromEmail,
     to: customerEmail,
