@@ -26,7 +26,7 @@ const redisHost = parseRedisConnection(
 const producerConnection = {
   ...redisHost,
   enableOfflineQueue: false,
-  connectTimeout: 3000,
+  connectTimeout: 500,
   maxRetriesPerRequest: 1,
 };
 

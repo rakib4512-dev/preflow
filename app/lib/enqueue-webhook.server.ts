@@ -1,7 +1,7 @@
 import { webhookQueue } from "../queue.server";
 import type { WebhookJobData } from "../queue.server";
 
-const ENQUEUE_TIMEOUT_MS = 3000;
+const ENQUEUE_TIMEOUT_MS = 800;
 
 export async function enqueueWebhook(data: WebhookJobData): Promise<void> {
   try {
