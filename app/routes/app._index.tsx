@@ -20,6 +20,59 @@ import { PLANS, usagePercent } from "../lib/billing.shared";
 import { resetCycleIfNeeded } from "../lib/billing.server";
 import { reconcileRecentOrders } from "../lib/reconcile-orders.server";
 
+type AdminClient = Awaited<ReturnType<typeof authenticate.admin>>["admin"];
+
+// Module-level cache: product GID → { title, expiresAt }
+const titleCache = new Map<string, { title: string; expiresAt: number }>();
+const TITLE_TTL = 5 * 60 * 1000; // 5 minutes
+
+async function fetchProductTitles(
+  admin: AdminClient,
+  productIds: string[],
+): Promise<Map<string, string>> {
+  const result = new Map<string, string>();
+  if (productIds.length === 0) return result;
+
+  const now = Date.now();
+  const missing: string[] = [];
+
+  for (const id of productIds) {
+    const cached = titleCache.get(id);
+    if (cached && cached.expiresAt > now) {
+      result.set(id, cached.title);
+    } else {
+      missing.push(id);
+    }
+  }
+
+  if (missing.length === 0) return result;
+
+  const aliasFields = missing
+    .map((gid, i) => `p${i}: product(id: "${gid}") { id title }`)
+    .join("\n    ");
+
+  try {
+    const res = await admin.graphql(`#graphql
+      query BatchProductTitles {
+        ${aliasFields}
+      }
+    `);
+    const json = (await res.json()) as {
+      data?: Record<string, { id: string; title: string } | null>;
+    };
+    for (const product of Object.values(json.data ?? {})) {
+      if (product) {
+        result.set(product.id, product.title);
+        titleCache.set(product.id, { title: product.title, expiresAt: now + TITLE_TTL });
+      }
+    }
+  } catch {
+    // non-fatal — falls back to numeric ID
+  }
+
+  return result;
+}
+
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
@@ -30,8 +83,8 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
   if (shopForCycle) await resetCycleIfNeeded(shopForCycle.id);
 
-  // Backfill any orders whose webhooks never arrived (throttled to 1/10min)
-  await reconcileRecentOrders(admin, session.shop).catch((err) =>
+  // Fire-and-forget — don't block the page waiting for order reconciliation
+  reconcileRecentOrders(admin, session.shop).catch((err) =>
     console.error("[dashboard] reconcile failed:", err),
   );
 
@@ -46,52 +99,29 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     },
   });
 
-  // Count separately — including the rows would cap at the table's take:10 and
-  // never show the real total.
-  const activeCount = shop
-    ? await prisma.preorderConfig.count({ where: { shopId: shop.id, enabled: true } })
-    : 0;
-  // Count from the rolling billing cycleStart (not the calendar month) so this
-  // number stays consistent with the usage meter shown beside it.
-  const ordersThisCycle = shop
-    ? await prisma.preorderOrder.count({
-        where: { shopId: shop.id, createdAt: { gte: shop.cycleStart } },
-      })
-    : 0;
+  const configs = shop?.preorderConfigs ?? [];
+  const uniqueProductIds = [...new Set(configs.map((c) => c.productId))];
+
+  // Run both DB counts and the product title fetch in parallel
+  const [activeCount, ordersThisCycle, titleMap] = await Promise.all([
+    // Count separately — including the rows would cap at the table's take:10
+    shop
+      ? prisma.preorderConfig.count({ where: { shopId: shop.id, enabled: true } })
+      : Promise.resolve(0),
+    // Count from rolling billing cycleStart, not the calendar month
+    shop
+      ? prisma.preorderOrder.count({
+          where: { shopId: shop.id, createdAt: { gte: shop.cycleStart } },
+        })
+      : Promise.resolve(0),
+    fetchProductTitles(admin, uniqueProductIds),
+  ]);
+
   const plan = shop?.plan ?? "FREE";
   const usage = shop?.usageThisCycle ?? 0;
   const limit = PLANS[plan].monthlyLimit;
   const pct = usagePercent(usage, plan);
   const atLimit = limit !== Infinity && usage >= limit;
-
-  const configs = shop?.preorderConfigs ?? [];
-
-  // Fetch product titles using individual product queries (more reliable than nodes inline fragments)
-  const titleMap = new Map<string, string>();
-  if (configs.length > 0) {
-    const uniqueProductIds = [...new Set(configs.map((c) => c.productId))];
-    await Promise.all(
-      uniqueProductIds.map(async (gid) => {
-        try {
-          const res = await admin.graphql(
-            `#graphql
-            query GetProductTitle($id: ID!) {
-              product(id: $id) {
-                id
-                title
-              }
-            }`,
-            { variables: { id: gid } },
-          );
-          const json = await res.json() as { data?: { product?: { id: string; title: string } | null } };
-          const product = json.data?.product;
-          if (product) titleMap.set(product.id, product.title);
-        } catch {
-          // non-fatal — falls back to numeric ID
-        }
-      }),
-    );
-  }
 
   return {
     shop: session.shop,
