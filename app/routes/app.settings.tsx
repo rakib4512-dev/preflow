@@ -22,6 +22,7 @@ import prisma from "../db.server";
 // storing duplicates in the DB would silently do nothing.
 type Settings = {
   ownerEmail: string;
+  fromEmail: string;
   cancelMode: "auto" | "request";
   notificationIntroText: string;
 };
@@ -38,6 +39,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   return {
     ownerEmail: settings.ownerEmail ?? "",
+    fromEmail: settings.fromEmail ?? "",
     cancelMode: settings.cancelMode ?? "auto",
     notificationIntroText: settings.notificationIntroText ?? "",
   };
@@ -49,6 +51,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   const settings: Settings = {
     ownerEmail: (formData.get("ownerEmail") as string) || "",
+    fromEmail: (formData.get("fromEmail") as string) || "",
     cancelMode: ((formData.get("cancelMode") as string) === "request" ? "request" : "auto") as "auto" | "request",
     notificationIntroText: (formData.get("notificationIntroText") as string) || "",
   };
@@ -67,16 +70,18 @@ export default function SettingsPage() {
   const saved = fetcher.data?.success;
 
   const [ownerEmail, setOwnerEmail] = useState(data.ownerEmail);
+  const [fromEmail, setFromEmail] = useState(data.fromEmail);
   const [cancelMode, setCancelMode] = useState<"auto" | "request">(data.cancelMode);
   const [notificationIntroText, setNotificationIntroText] = useState(data.notificationIntroText);
 
   const handleSave = useCallback(() => {
     const fd = new FormData();
     fd.append("ownerEmail", ownerEmail);
+    fd.append("fromEmail", fromEmail);
     fd.append("cancelMode", cancelMode);
     fd.append("notificationIntroText", notificationIntroText);
     fetcher.submit(fd, { method: "POST" });
-  }, [ownerEmail, cancelMode, notificationIntroText, fetcher]);
+  }, [ownerEmail, fromEmail, cancelMode, notificationIntroText, fetcher]);
 
   return (
     <Page>
@@ -107,6 +112,15 @@ export default function SettingsPage() {
                 autoComplete="email"
                 type="email"
                 helpText="Receives usage warning emails at 70% and 100% of your plan limit"
+              />
+              <TextField
+                label="From email address"
+                value={fromEmail}
+                onChange={setFromEmail}
+                autoComplete="email"
+                type="email"
+                placeholder="orders@yourdomain.com"
+                helpText="Emails to customers are sent from this address. Must be a domain verified in your Resend account (resend.com → Domains)."
               />
               <TextField
                 label="Pre-order confirmation email intro (optional)"

@@ -123,6 +123,11 @@ async function sendConfirmationEmail(
   });
   const settings = (shopSettings?.settings ?? {}) as Record<string, unknown>;
   const introText = (settings.notificationIntroText as string | undefined) || undefined;
+  const fromEmail = (settings.fromEmail as string | undefined) || "";
+  if (!fromEmail) {
+    console.warn("[order-create] fromEmail not configured in settings — skipping confirmation email. Set it in PreFlow → Settings → From email address.");
+    return;
+  }
 
   const token = createBuyerToken(orderGid, shop);
   const manageUrl = `${appUrl}/buyer/cancel/${token}`;
@@ -143,7 +148,7 @@ async function sendConfirmationEmail(
   });
 
   await resend.emails.send({
-    from: `${storeName} <noreply@preflow.app>`,
+    from: fromEmail,
     to: customerEmail,
     subject,
     html,
