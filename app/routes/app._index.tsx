@@ -43,20 +43,21 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
         orderBy: { updatedAt: "desc" },
         take: 10,
       },
-      preorderOrders: {
-        where: {
-          createdAt: { gte: new Date(new Date().setDate(1)) },
-        },
-      },
     },
   });
 
-  // Count separately — the include above uses take:10 for the table preview,
-  // so .length would be capped at 10 and never show the real total.
+  // Count separately — including the rows would cap at the table's take:10 and
+  // never show the real total.
   const activeCount = shop
     ? await prisma.preorderConfig.count({ where: { shopId: shop.id, enabled: true } })
     : 0;
-  const ordersThisCycle = shop?.preorderOrders.length ?? 0;
+  // Count from the rolling billing cycleStart (not the calendar month) so this
+  // number stays consistent with the usage meter shown beside it.
+  const ordersThisCycle = shop
+    ? await prisma.preorderOrder.count({
+        where: { shopId: shop.id, createdAt: { gte: shop.cycleStart } },
+      })
+    : 0;
   const plan = shop?.plan ?? "FREE";
   const usage = shop?.usageThisCycle ?? 0;
   const limit = PLANS[plan].monthlyLimit;
@@ -201,4 +202,3 @@ export default function Dashboard() {
     </Page>
   );
 }
-

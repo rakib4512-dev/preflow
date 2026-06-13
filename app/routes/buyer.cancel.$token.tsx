@@ -136,7 +136,8 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<R
     } satisfies ActionData);
   }
   const checkRes = await admin.graphql(
-    `#graphql query CheckFulfillment($id: ID!) { order(id: $id) { displayFulfillmentStatus email lineItems(first: 1) { nodes { title } } } }`,
+    `#graphql
+    query CheckFulfillment($id: ID!) { order(id: $id) { displayFulfillmentStatus email lineItems(first: 1) { nodes { title } } } }`,
     { variables: { id: orderGid } },
   );
   const checkJson = (await checkRes.json()) as {

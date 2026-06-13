@@ -205,7 +205,8 @@ async function handleAction(
     }
 
     const productRes = await admin.graphql(
-      `#graphql query ProductTitle($id: ID!) { product(id: $id) { title } }`,
+      `#graphql
+      query ProductTitle($id: ID!) { product(id: $id) { title } }`,
       { variables: { id: productId } },
     );
     const productJson = await productRes.json() as { data?: { product?: { title: string } } };

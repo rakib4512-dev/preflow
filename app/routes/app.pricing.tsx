@@ -142,12 +142,10 @@ async function handleBilling(
   // Development stores can never approve REAL charges — Shopify rejects the
   // confirmation. Detect them and always create test charges there, regardless
   // of NODE_ENV. SHOPIFY_BILLING_TEST=true forces test charges everywhere.
-  const shopRes = await admin.graphql(
-    `#graphql query ShopPlan { shop { plan { partnerDevelopment } } }`,
-  );
-  const shopText = await shopRes.text();
-  console.log("[billing] ShopPlan response:", shopText);
-  const shopJson = JSON.parse(shopText) as {
+  const shopRes = await admin.graphql(`#graphql
+    query ShopPlan { shop { plan { partnerDevelopment } } }
+  `);
+  const shopJson = (await shopRes.json()) as {
     data?: { shop?: { plan?: { partnerDevelopment?: boolean } } };
   };
   const isDevStore = Boolean(shopJson.data?.shop?.plan?.partnerDevelopment);
@@ -207,9 +205,7 @@ async function handleBilling(
     },
   );
 
-  const resText = await res.text();
-  console.log("[billing] CreateSubscription response:", resText);
-  const json = JSON.parse(resText);
+  const json = await res.json();
   const errors = json.data?.appSubscriptionCreate?.userErrors ?? [];
   if (errors.length > 0) {
     return Response.json({ error: JSON.stringify(errors) }, { status: 400 });
@@ -373,4 +369,3 @@ export default function PricingPage() {
     </Page>
   );
 }
-

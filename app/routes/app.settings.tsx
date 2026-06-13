@@ -56,9 +56,17 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     notificationIntroText: (formData.get("notificationIntroText") as string) || "",
   };
 
+  // Merge into existing settings so internal keys (e.g. lastReconcileAt, used to
+  // throttle the order-reconcile sweep) aren't wiped by a settings save.
+  const existing = await prisma.shop.findUnique({
+    where: { shop: session.shop },
+    select: { settings: true },
+  });
+  const merged = { ...((existing?.settings ?? {}) as Record<string, unknown>), ...settings };
+
   await prisma.shop.update({
     where: { shop: session.shop },
-    data: { settings },
+    data: { settings: merged },
   });
 
   return Response.json({ success: true });
@@ -171,4 +179,3 @@ export default function SettingsPage() {
     </Page>
   );
 }
-

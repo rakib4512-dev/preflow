@@ -42,10 +42,6 @@ export async function handleOrderCreate(
     .filter((li) => li.product_id != null)
     .map((li) => `gid://shopify/Product/${li.product_id}`);
 
-  console.log("[order-create] shop:", shop, "shopId:", shopRecord.id);
-  console.log("[order-create] variantGids:", variantGids);
-  console.log("[order-create] productGids:", productGids);
-
   const configs = await prisma.preorderConfig.findMany({
     where: {
       shopId: shopRecord.id,
@@ -57,16 +53,8 @@ export async function handleOrderCreate(
     },
   });
 
-  console.log("[order-create] matched configs:", configs.length);
-
-  if (configs.length === 0) {
-    const allEnabled = await prisma.preorderConfig.findMany({
-      where: { shopId: shopRecord.id, enabled: true },
-      select: { productId: true, variantId: true },
-    });
-    console.log("[order-create] all enabled configs:", JSON.stringify(allEnabled));
-    return;
-  }
+  // No pre-order line items on this order — nothing to do.
+  if (configs.length === 0) return;
 
   // create + P2002-catch instead of upsert: we must know whether this order
   // was seen before, so a duplicate webhook run never double-counts usage.
@@ -107,22 +95,18 @@ async function sendConfirmationEmail(
   configs: Array<{ shipDate: Date | null }>,
 ): Promise<void> {
   const customerEmail = order.email ?? order.customer?.email ?? null;
-  console.log("[order-create] sendConfirmationEmail customerEmail:", customerEmail);
   if (!customerEmail) {
-    console.warn("[order-create] no customerEmail in payload — PCD not approved or guest order");
+    // No email means protected-customer-data isn't approved yet or this is a
+    // guest order with no contact — nothing to send.
     return;
   }
 
   const orderGid = order.admin_graphql_api_id;
   const dedupeKey = `${orderGid}:confirmation`;
   const existing = await prisma.customerNotification.findUnique({ where: { dedupeKey } });
-  if (existing) {
-    console.log("[order-create] confirmation already sent for", orderGid);
-    return;
-  }
+  if (existing) return;
 
   const appUrl = process.env.SHOPIFY_APP_URL ?? "";
-  console.log("[order-create] appUrl:", appUrl);
   if (!appUrl) return;
 
   const shopSettings = await prisma.shop.findUnique({
@@ -151,7 +135,6 @@ async function sendConfirmationEmail(
     introText,
   });
 
-  console.log("[order-create] sending email from:", fromEmail, "to:", customerEmail);
   await resend.emails.send({
     from: fromEmail,
     to: customerEmail,
