@@ -185,7 +185,7 @@ async function sendWarningEmail(
       ? `Pre-orders will <strong>never stop</strong> — upgrade to raise your limit.`
       : `Pre-orders will <strong>never stop</strong> — any overages are billed at $${OVERAGE_RATE}/order, capped at $${nextTierPriceDiff(plan)} per cycle.`;
   await resend.emails.send({
-    from: "PreFlow <noreply@preflow.app>",
+    from: "PreFlow <onboarding@resend.dev>",
     to,
     subject: `[PreFlow] You've used ${percent}% of your pre-order limit`,
     html: `

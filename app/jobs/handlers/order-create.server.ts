@@ -123,11 +123,7 @@ async function sendConfirmationEmail(
   });
   const settings = (shopSettings?.settings ?? {}) as Record<string, unknown>;
   const introText = (settings.notificationIntroText as string | undefined) || undefined;
-  const fromEmail = (settings.fromEmail as string | undefined) || "";
-  if (!fromEmail) {
-    console.warn("[order-create] fromEmail not configured in settings — skipping confirmation email. Set it in PreFlow → Settings → From email address.");
-    return;
-  }
+  const fromEmail = (settings.fromEmail as string | undefined) || "onboarding@resend.dev";
 
   const token = createBuyerToken(orderGid, shop);
   const manageUrl = `${appUrl}/buyer/cancel/${token}`;

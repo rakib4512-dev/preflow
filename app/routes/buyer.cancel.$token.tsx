@@ -194,7 +194,7 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<R
         customerEmail,
         cancelType: "buyer_cancel",
       });
-      await resend.emails.send({ from: "PreFlow <noreply@preflow.app>", to: ownerEmail, subject, html, text }).catch(() => {});
+      await resend.emails.send({ from: "PreFlow <onboarding@resend.dev>", to: ownerEmail, subject, html, text }).catch(() => {});
     }
 
     return Response.json({ done: true, mode: "auto" } satisfies ActionData);
@@ -220,7 +220,7 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<R
         customerEmail,
         cancelType: "buyer_cancel_request",
       });
-      await resend.emails.send({ from: "PreFlow <noreply@preflow.app>", to: ownerEmail, subject, html, text }).catch(() => {});
+      await resend.emails.send({ from: "PreFlow <onboarding@resend.dev>", to: ownerEmail, subject, html, text }).catch(() => {});
     }
 
     return Response.json({ done: true, mode: "request" } satisfies ActionData);

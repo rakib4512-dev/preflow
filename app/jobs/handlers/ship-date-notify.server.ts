@@ -88,7 +88,7 @@ export async function handleShipDateNotify(data: NotifyJobData): Promise<void> {
       });
 
       await resend.emails.send({
-        from: `${shopDomain.replace(".myshopify.com", "")} <noreply@preflow.app>`,
+        from: `${shopDomain.replace(".myshopify.com", "")} <onboarding@resend.dev>`,
         to: customerEmail,
         subject,
         html,
