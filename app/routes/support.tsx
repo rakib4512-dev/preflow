@@ -66,29 +66,16 @@ export default function Support() {
           {/* Hero */}
           <div style={{ background: "#fff", borderRadius: "20px", padding: "40px 48px", boxShadow: "0 4px 6px rgba(0,0,0,0.04), 0 10px 40px rgba(99,102,241,0.09)" }}>
             <h1 style={{ fontSize: "28px", fontWeight: 800, color: "#111827", marginBottom: "12px" }}>Support</h1>
-            <p style={{ fontSize: "15px", color: "#4b5563", lineHeight: 1.7, marginBottom: "20px" }}>
+            <p style={{ fontSize: "15px", color: "#4b5563", lineHeight: 1.7, marginBottom: "12px" }}>
               Need help with PreFlow? We&rsquo;ll get back to you within one business day.
               Please include your store&rsquo;s myshopify.com domain so we can look into your setup right away.
             </p>
-            <a
-              href="mailto:rakibpabna426@gmail.com"
-              style={{
-                display: "inline-flex",
-                alignItems: "center",
-                gap: "8px",
-                padding: "11px 20px",
-                background: "linear-gradient(135deg, #6366f1, #8b5cf6)",
-                color: "#fff",
-                borderRadius: "10px",
-                fontWeight: 700,
-                fontSize: "14px",
-                textDecoration: "none",
-                boxShadow: "0 4px 12px rgba(99,102,241,0.35)",
-              }}
-            >
-              <svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
-              Email support
-            </a>
+            <p style={{ fontSize: "15px", color: "#4b5563" }}>
+              Email us at{" "}
+              <a href="mailto:rakibpabna426@gmail.com" style={{ color: "#6366f1", fontWeight: 600 }}>
+                rakibpabna426@gmail.com
+              </a>
+            </p>
           </div>
 
           {/* FAQ */}
