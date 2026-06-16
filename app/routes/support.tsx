@@ -16,7 +16,7 @@ const FAQS: Array<{ q: string; a: string }> = [
   },
   {
     q: "Can customers cancel their pre-order?",
-    a: "Yes. Every pre-order confirmation email includes a "Manage my pre-order" link. Depending on your settings, cancellations are processed automatically with a refund, or sent to you as a request.",
+    a: "Yes. Every pre-order confirmation email includes a “Manage my pre-order” link. Depending on your settings, cancellations are processed automatically with a refund, or sent to you as a request.",
   },
   {
     q: "What happens when I change a ship date?",
