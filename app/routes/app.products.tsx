@@ -55,32 +55,35 @@ async function loadProducts(
   session: Awaited<ReturnType<typeof authenticate.admin>>["session"],
   query: string,
 ) {
-  const res = await admin.graphql(
-    `#graphql
-    query SearchProducts($query: String!) {
-      products(first: 20, query: $query) {
-        edges {
-          node {
-            id
-            title
-            featuredImage { url altText }
-            variants(first: 10) {
-              edges {
-                node { id title }
+  // Shopify product search and the shop lookup are independent — run together
+  const [res, shopRecord] = await Promise.all([
+    admin.graphql(
+      `#graphql
+      query SearchProducts($query: String!) {
+        products(first: 20, query: $query) {
+          edges {
+            node {
+              id
+              title
+              featuredImage { url altText }
+              variants(first: 10) {
+                edges {
+                  node { id title }
+                }
               }
             }
           }
         }
-      }
-    }`,
-    { variables: { query: query || "status:active" } },
-  );
+      }`,
+      { variables: { query: query || "status:active" } },
+    ),
+    prisma.shop.findUnique({
+      where: { shop: session.shop },
+      select: { id: true },
+    }),
+  ]);
 
   const json = await res.json();
-  const shopRecord = await prisma.shop.findUnique({
-    where: { shop: session.shop },
-    select: { id: true },
-  });
 
   const configs = shopRecord
     ? await prisma.preorderConfig.findMany({
