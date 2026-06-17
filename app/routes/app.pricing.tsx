@@ -7,12 +7,6 @@ import {
   Card,
   Text,
   BlockStack,
-  InlineStack,
-  Badge,
-  Button,
-  List,
-  Divider,
-  Box,
   Banner,
 } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
@@ -261,6 +255,25 @@ export default function PricingPage() {
       ? (fetcher.data as { error: string }).error
       : null;
 
+  // Each plan's visual style — middle one highlighted as the recommended tier.
+  const planStyle: Record<Plan, { gradient: string; tag: string; iconBg: string }> = {
+    FREE: {
+      gradient: "linear-gradient(135deg, #f3f4f6 0%, #e5e7eb 100%)",
+      tag: "Get started",
+      iconBg: "linear-gradient(135deg, #6b7280, #4b5563)",
+    },
+    GROWTH: {
+      gradient: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 60%, #a855f7 100%)",
+      tag: "Most popular",
+      iconBg: "linear-gradient(135deg, #6366f1, #8b5cf6)",
+    },
+    PRO: {
+      gradient: "linear-gradient(135deg, #111827 0%, #1f2937 100%)",
+      tag: "For power sellers",
+      iconBg: "linear-gradient(135deg, #111827, #374151)",
+    },
+  };
+
   return (
     <Page>
       <TitleBar title="Pricing" />
@@ -270,90 +283,270 @@ export default function PricingPage() {
             <p>{billingError}</p>
           </Banner>
         )}
-        <Card>
-          <BlockStack gap="300">
-            <Text variant="headingLg" as="h2">
-              Pre-orders that <em>never stop</em>
-            </Text>
-            <Text as="p" variant="bodyMd" tone="subdued">
-              When you hit your plan limit, your store keeps selling. Overage is billed at{" "}
-              <strong>${OVERAGE_RATE}/order</strong>, capped at the cost to upgrade to the next tier.
-              You will never be charged more than an upgrade would have cost.
-            </Text>
-          </BlockStack>
-        </Card>
 
+        {/* Header */}
+        <div style={{
+          background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%)",
+          borderRadius: "16px",
+          padding: "36px 40px",
+          color: "#fff",
+          boxShadow: "0 4px 20px rgba(99,102,241,0.25)",
+          textAlign: "center",
+        }}>
+          <div style={{
+            fontSize: "12px",
+            fontWeight: 700,
+            textTransform: "uppercase",
+            letterSpacing: "0.12em",
+            opacity: 0.85,
+            marginBottom: "10px",
+          }}>
+            Simple, fair pricing
+          </div>
+          <h1 style={{
+            fontSize: "32px",
+            fontWeight: 800,
+            letterSpacing: "-0.5px",
+            margin: "0 0 12px",
+          }}>
+            Pre-orders that <em style={{ fontStyle: "normal", color: "#fde68a" }}>never stop</em>
+          </h1>
+          <p style={{
+            fontSize: "15px",
+            opacity: 0.9,
+            maxWidth: "540px",
+            margin: "0 auto",
+            lineHeight: 1.6,
+          }}>
+            When you hit your plan limit, your store keeps selling.
+            Overage at <strong>${OVERAGE_RATE}/order</strong>, hard-capped at the cost to upgrade.
+            You&apos;ll never pay more than switching tiers would have cost.
+          </p>
+        </div>
+
+        {/* Plan cards */}
         <Layout>
           {plans.map((plan) => {
             const isCurrentPlan = plan === currentPlan;
             const config = PLANS[plan];
+            const style = planStyle[plan];
+            const isFeatured = plan === "GROWTH";
+
             return (
               <Layout.Section key={plan} variant="oneThird">
-                <Card>
-                  <BlockStack gap="400">
-                    <InlineStack align="space-between" blockAlign="center">
-                      <Text variant="headingMd" as="h3">{config.name}</Text>
-                      {isCurrentPlan && <Badge tone="success">Current plan</Badge>}
-                    </InlineStack>
+                <div
+                  style={{
+                    background: "#fff",
+                    borderRadius: "16px",
+                    overflow: "hidden",
+                    border: isFeatured ? "2px solid #8b5cf6" : "1px solid #f3f4f6",
+                    boxShadow: isFeatured
+                      ? "0 8px 28px rgba(139,92,246,0.22)"
+                      : "0 1px 3px rgba(0,0,0,0.04), 0 1px 2px rgba(0,0,0,0.06)",
+                    transform: isFeatured ? "scale(1.02)" : "none",
+                    transition: "transform 0.2s ease",
+                    position: "relative",
+                    height: "100%",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  {/* Banner */}
+                  <div style={{
+                    background: style.gradient,
+                    color: "#fff",
+                    padding: "20px 24px",
+                    position: "relative",
+                  }}>
+                    <div style={{
+                      fontSize: "11px",
+                      fontWeight: 700,
+                      textTransform: "uppercase",
+                      letterSpacing: "0.1em",
+                      opacity: 0.9,
+                      marginBottom: "6px",
+                    }}>
+                      {style.tag}
+                    </div>
+                    <div style={{
+                      fontSize: "22px",
+                      fontWeight: 800,
+                      letterSpacing: "-0.4px",
+                    }}>
+                      {config.name}
+                    </div>
+                    {isCurrentPlan && (
+                      <div style={{
+                        position: "absolute",
+                        top: "16px",
+                        right: "16px",
+                        background: "rgba(255,255,255,0.25)",
+                        backdropFilter: "blur(8px)",
+                        padding: "4px 10px",
+                        borderRadius: "999px",
+                        fontSize: "11px",
+                        fontWeight: 700,
+                        textTransform: "uppercase",
+                        letterSpacing: "0.08em",
+                        border: "1px solid rgba(255,255,255,0.3)",
+                      }}>
+                        Current
+                      </div>
+                    )}
+                  </div>
 
-                    <Text variant="heading2xl" as="p">
-                      {config.price === 0 ? "Free" : `$${config.price}`}
-                      {config.price > 0 && (
-                        <Text as="span" variant="bodyMd" tone="subdued"> / month</Text>
-                      )}
-                    </Text>
+                  {/* Body */}
+                  <div style={{
+                    padding: "24px",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: "20px",
+                    flex: 1,
+                  }}>
+                    {/* Price */}
+                    <div>
+                      <div style={{ display: "flex", alignItems: "baseline", gap: "6px" }}>
+                        <span style={{
+                          fontSize: "40px",
+                          fontWeight: 800,
+                          color: "#111827",
+                          letterSpacing: "-1.5px",
+                          lineHeight: 1,
+                        }}>
+                          {config.price === 0 ? "Free" : `$${config.price}`}
+                        </span>
+                        {config.price > 0 && (
+                          <span style={{ fontSize: "14px", color: "#6b7280", fontWeight: 600 }}>
+                            / month
+                          </span>
+                        )}
+                      </div>
+                      <div style={{
+                        fontSize: "13px",
+                        color: "#6b7280",
+                        marginTop: "6px",
+                        fontWeight: 500,
+                      }}>
+                        {config.monthlyLimit === Infinity
+                          ? "♾️  Unlimited pre-orders"
+                          : `${config.monthlyLimit} pre-orders / month`}
+                      </div>
+                    </div>
 
-                    <Text as="p" variant="bodyMd" tone="subdued">
-                      {config.monthlyLimit === Infinity
-                        ? "Unlimited pre-orders"
-                        : `${config.monthlyLimit} pre-orders / month`}
-                    </Text>
-
-                    <Divider />
-
-                    <List type="bullet">
+                    {/* Features */}
+                    <div style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "10px",
+                      paddingTop: "16px",
+                      borderTop: "1px solid #f3f4f6",
+                    }}>
                       {PLAN_DESCRIPTIONS[plan].map((desc) => (
-                        <List.Item key={desc}>{desc}</List.Item>
+                        <div key={desc} style={{
+                          display: "flex",
+                          alignItems: "flex-start",
+                          gap: "10px",
+                          fontSize: "14px",
+                          color: "#374151",
+                          lineHeight: 1.5,
+                        }}>
+                          <span style={{
+                            width: "18px",
+                            height: "18px",
+                            borderRadius: "50%",
+                            background: isFeatured ? "linear-gradient(135deg, #6366f1, #8b5cf6)" : "#d1fae5",
+                            display: "inline-flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            flexShrink: 0,
+                            marginTop: "2px",
+                          }}>
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none">
+                              <path d="M5 12l4 4L19 6" stroke={isFeatured ? "#fff" : "#059669"} strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" />
+                            </svg>
+                          </span>
+                          <span>{desc}</span>
+                        </div>
                       ))}
-                    </List>
+                    </div>
 
-                    <Box>
+                    {/* CTA */}
+                    <div style={{ marginTop: "auto" }}>
                       {plan !== "FREE" && !isCurrentPlan && (
-                        <Button
-                          variant="primary"
-                          fullWidth
-                          loading={loadingPlan === plan && fetcher.state !== "idle"}
+                        <button
                           onClick={() => handleUpgrade(plan)}
+                          disabled={loadingPlan === plan && fetcher.state !== "idle"}
+                          style={{
+                            width: "100%",
+                            padding: "12px 16px",
+                            borderRadius: "10px",
+                            border: "none",
+                            background: isFeatured
+                              ? "linear-gradient(135deg, #6366f1, #8b5cf6)"
+                              : "#111827",
+                            color: "#fff",
+                            fontWeight: 700,
+                            fontSize: "14px",
+                            cursor: "pointer",
+                            boxShadow: isFeatured ? "0 4px 14px rgba(99,102,241,0.4)" : "none",
+                            transition: "opacity 0.15s",
+                            opacity: (loadingPlan === plan && fetcher.state !== "idle") ? 0.6 : 1,
+                            fontFamily: "inherit",
+                          }}
                         >
-                          Upgrade to {config.name}
-                        </Button>
+                          {(loadingPlan === plan && fetcher.state !== "idle")
+                            ? "Opening checkout…"
+                            : `Upgrade to ${config.name}`}
+                        </button>
                       )}
                       {plan === "FREE" && currentPlan !== "FREE" && (
-                        <Button
-                          variant="secondary"
-                          fullWidth
-                          tone="critical"
-                          loading={loadingPlan === "FREE" && fetcher.state !== "idle"}
+                        <button
                           onClick={handleCancel}
+                          disabled={loadingPlan === "FREE" && fetcher.state !== "idle"}
+                          style={{
+                            width: "100%",
+                            padding: "12px 16px",
+                            borderRadius: "10px",
+                            border: "1.5px solid #e5e7eb",
+                            background: "#fff",
+                            color: "#6b7280",
+                            fontWeight: 600,
+                            fontSize: "14px",
+                            cursor: "pointer",
+                            transition: "opacity 0.15s",
+                            opacity: (loadingPlan === "FREE" && fetcher.state !== "idle") ? 0.6 : 1,
+                            fontFamily: "inherit",
+                          }}
                         >
-                          Downgrade to Free
-                        </Button>
+                          {(loadingPlan === "FREE" && fetcher.state !== "idle")
+                            ? "Cancelling…"
+                            : "Downgrade to Free"}
+                        </button>
                       )}
                       {isCurrentPlan && (
-                        <Text as="p" variant="bodyMd" tone="subdued" alignment="center">
+                        <div style={{
+                          textAlign: "center",
+                          padding: "12px",
+                          fontSize: "13px",
+                          color: plan === "FREE" ? "#374151" : "#059669",
+                          fontWeight: 600,
+                          background: plan === "FREE" ? "#f9fafb" : "#ecfdf5",
+                          borderRadius: "10px",
+                        }}>
                           {plan === "FREE"
                             ? `${usage} / ${config.monthlyLimit} orders used this cycle`
-                            : "Active"}
-                        </Text>
+                            : "✓ Active"}
+                        </div>
                       )}
-                    </Box>
-                  </BlockStack>
-                </Card>
+                    </div>
+                  </div>
+                </div>
               </Layout.Section>
             );
           })}
         </Layout>
 
+        {/* Overage explained */}
         <Card>
           <BlockStack gap="200">
             <Text variant="headingMd" as="h3">Overage explained</Text>
