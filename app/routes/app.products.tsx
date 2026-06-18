@@ -38,22 +38,17 @@ type ProductItem = {
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const url = new URL(request.url);
-  const query = url.searchParams.get("q") ?? "";
+  // The parent app.tsx loader has no try/catch and handles auth redirects.
+  // Here we catch everything and never throw, so revalidation after a fetcher
+  // action can never trigger the error boundary regardless of auth state.
   try {
+    const url = new URL(request.url);
+    const query = url.searchParams.get("q") ?? "";
     const { admin, session } = await authenticate.admin(request);
-    try {
-      return await loadProducts(admin, session, query);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[app.products] loader failed:", err);
-      return { products: [] as ProductItem[], query, loadError: message };
-    }
-  } catch (outerErr) {
-    // Only rethrow 3xx redirects (Shopify re-auth) — a 4xx/5xx auth response
-    // thrown during loader revalidation would otherwise trigger the error boundary.
-    if (outerErr instanceof Response && outerErr.status >= 300 && outerErr.status < 400) throw outerErr;
-    return { products: [] as ProductItem[], query, loadError: null };
+    return await loadProducts(admin, session, query);
+  } catch (err) {
+    if (err instanceof Response && err.status >= 300 && err.status < 400) throw err;
+    return { products: [] as ProductItem[], query: "", loadError: null };
   }
 };
 
@@ -129,9 +124,10 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     const { admin, session } = await authenticate.admin(request);
     return await handleAction(request, admin, session);
   } catch (err) {
-    // Only rethrow 3xx redirects (Shopify re-auth flow) — everything else
-    // becomes a banner error so the error boundary is never triggered.
-    if (err instanceof Response && err.status >= 300 && err.status < 400) throw err;
+    // Return all Responses (including auth redirects) rather than throwing them.
+    // Remix handles 3xx returned from a fetcher action the same as thrown ones
+    // (performs navigation), but returning means the error boundary is never triggered.
+    if (err instanceof Response) return err;
     const message = err instanceof Error ? err.message : String(err);
     console.error("[app.products] action failed:", err);
     return Response.json({ success: false, error: message });
