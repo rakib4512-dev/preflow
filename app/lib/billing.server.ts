@@ -196,12 +196,27 @@ async function sendWarningEmail(
   });
 }
 
-export async function resetCycleIfNeeded(shopId: string): Promise<void> {
-  const shop = await prisma.shop.findUnique({
-    where: { id: shopId },
-    select: { cycleStart: true, plan: true, usageThisCycle: true },
-  });
-  if (!shop) return;
+type CycleFields = { cycleStart: Date; usageThisCycle: number };
+
+/**
+ * Rolls the 30-day usage cycle if it has expired. Returns the current cycle
+ * fields (post-reset when a reset happened), so callers that already hold the
+ * shop row can use the values without a follow-up read.
+ *
+ * Pass `preloaded` when the caller has already fetched cycleStart/usageThisCycle
+ * to avoid a redundant SELECT on the same row.
+ */
+export async function resetCycleIfNeeded(
+  shopId: string,
+  preloaded?: CycleFields,
+): Promise<CycleFields> {
+  const shop =
+    preloaded ??
+    (await prisma.shop.findUnique({
+      where: { id: shopId },
+      select: { cycleStart: true, usageThisCycle: true },
+    }));
+  if (!shop) return { cycleStart: new Date(), usageThisCycle: 0 };
 
   const now = new Date();
   const cycleAge = now.getTime() - shop.cycleStart.getTime();
@@ -212,6 +227,9 @@ export async function resetCycleIfNeeded(shopId: string): Promise<void> {
       where: { id: shopId },
       data: { usageThisCycle: 0, cycleStart: now },
     });
+    return { cycleStart: now, usageThisCycle: 0 };
   }
+
+  return { cycleStart: shop.cycleStart, usageThisCycle: shop.usageThisCycle };
 }
 
