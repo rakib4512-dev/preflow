@@ -1,5 +1,6 @@
+import { useEffect } from "react";
 import type { LoaderFunctionArgs } from "@remix-run/node";
-import { useLoaderData } from "@remix-run/react";
+import { useLoaderData, useRevalidator } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -76,28 +77,43 @@ async function fetchProductTitles(
 export const loader = async ({ request }: LoaderFunctionArgs) => {
   const { admin, session } = await authenticate.admin(request);
 
-  // Roll the 30-day usage cycle on dashboard visits as well as on orders
-  const shopForCycle = await prisma.shop.findUnique({
+  // Single shop fetch: billing fields + the active configs the list needs.
+  // Avoids the previous 3-query waterfall on the same Shop row.
+  const shop = await prisma.shop.findUnique({
     where: { shop: session.shop },
-    select: { id: true },
+    select: {
+      id: true,
+      plan: true,
+      usageThisCycle: true,
+      cycleStart: true,
+      preorderConfigs: {
+        where: { enabled: true },
+        orderBy: { updatedAt: "desc" },
+        take: 10,
+        select: {
+          id: true,
+          productId: true,
+          variantId: true,
+          message: true,
+          shipDate: true,
+        },
+      },
+    },
   });
-  if (shopForCycle) await resetCycleIfNeeded(shopForCycle.id);
+
+  // Roll the 30-day usage cycle using the row we already loaded (no extra read).
+  // Returns post-reset values when a reset happened.
+  const cycle = shop
+    ? await resetCycleIfNeeded(shop.id, {
+        cycleStart: shop.cycleStart,
+        usageThisCycle: shop.usageThisCycle,
+      })
+    : { cycleStart: new Date(), usageThisCycle: 0 };
 
   // Fire-and-forget — don't block the page waiting for order reconciliation
   reconcileRecentOrders(admin, session.shop).catch((err) =>
     console.error("[dashboard] reconcile failed:", err),
   );
-
-  const shop = await prisma.shop.findUnique({
-    where: { shop: session.shop },
-    include: {
-      preorderConfigs: {
-        where: { enabled: true },
-        orderBy: { updatedAt: "desc" },
-        take: 10,
-      },
-    },
-  });
 
   const configs = shop?.preorderConfigs ?? [];
   const uniqueProductIds = [...new Set(configs.map((c) => c.productId))];
@@ -111,14 +127,16 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     // Count from rolling billing cycleStart, not the calendar month
     shop
       ? prisma.preorderOrder.count({
-          where: { shopId: shop.id, createdAt: { gte: shop.cycleStart } },
+          where: { shopId: shop.id, createdAt: { gte: cycle.cycleStart } },
         })
       : Promise.resolve(0),
     fetchProductTitles(admin, uniqueProductIds),
   ]);
 
   const plan = shop?.plan ?? "FREE";
-  const usage = shop?.usageThisCycle ?? 0;
+  // Use the live PreorderOrder count — Shop.usageThisCycle can lag by a few
+  // seconds behind the webhook job, causing a mismatch between the two cards.
+  const usage = ordersThisCycle;
   const limit = PLANS[plan].monthlyLimit;
   const pct = usagePercent(usage, plan);
   const atLimit = limit !== Infinity && usage >= limit;
@@ -145,6 +163,15 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
 export default function Dashboard() {
   const data = useLoaderData<typeof loader>();
+  const { revalidate, state } = useRevalidator();
+
+  // Poll every 5 seconds so newly placed orders surface without a manual refresh.
+  useEffect(() => {
+    const id = setInterval(() => {
+      if (state === "idle") revalidate();
+    }, 5000);
+    return () => clearInterval(id);
+  }, [revalidate, state]);
 
   const formattedShipDate = (iso: string) => {
     const d = new Date(iso);
@@ -159,7 +186,7 @@ export default function Dashboard() {
 
   const usageTone = data.pct >= 100 ? "critical" : data.pct >= 70 ? "highlight" : "success";
   const usageColor = data.pct >= 100 ? "#dc2626" : data.pct >= 70 ? "#d97706" : "#22a460";
-  const initial = data.productInitial ?? (data.shop ? data.shop[0]?.toUpperCase() : "P");
+  const initial = data.shop ? data.shop[0]?.toUpperCase() : "P";
   const storeName = data.shop?.replace(".myshopify.com", "") ?? "";
 
   return (

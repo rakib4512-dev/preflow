@@ -15,6 +15,7 @@ export type EnablePreorderInput = {
   variantId?: string;
   message: string;
   shipDate: Date | null;
+  discountPercent?: number | null;
   admin: AdminGraphQL;
 };
 
@@ -32,6 +33,7 @@ export type UpdatePreorderInput = {
   variantId?: string;
   message: string;
   shipDate: Date | null;
+  discountPercent?: number | null;
   admin: AdminGraphQL;
 };
 
@@ -48,15 +50,18 @@ const METAFIELD_NAMESPACE = "$app:preorder";
 type PolicySnapshot = Array<{ id: string; policy: string }>;
 
 export async function enablePreorder(input: EnablePreorderInput): Promise<SagaResult> {
-  const { shopId, productId, variantId = "", message, shipDate, admin } = input;
+  const { shopId, productId, variantId = "", message, shipDate, discountPercent, admin } = input;
   const normalizedVariantId = variantId || "";
+  const discount = normalizeDiscount(discountPercent);
 
   let sellingPlanGid: string | null = null;
   let sellingPlanId: string | null = null;
   let createdGroupThisCall = false;
   let metafieldsWritten = false;
+  let discountGid: string | null = null;
+  let createdDiscountThisCall = false;
   let policySnapshot: PolicySnapshot | null = null;
-  let existing: { sellingPlanGid: string | null; sellingPlanId: string | null; policySnapshot: unknown } | null = null;
+  let existing: { sellingPlanGid: string | null; sellingPlanId: string | null; policySnapshot: unknown; discountGid: string | null; discountPercent: number | null } | null = null;
 
   try {
     // Reuse an existing selling plan group on re-enable instead of leaking a
@@ -66,10 +71,11 @@ export async function enablePreorder(input: EnablePreorderInput): Promise<SagaRe
       where: {
         shopId_productId_variantId: { shopId, productId, variantId: normalizedVariantId },
       },
-      select: { sellingPlanGid: true, sellingPlanId: true, policySnapshot: true },
+      select: { sellingPlanGid: true, sellingPlanId: true, policySnapshot: true, discountGid: true, discountPercent: true },
     });
     sellingPlanGid = existing?.sellingPlanGid ?? null;
     sellingPlanId = existing?.sellingPlanId ?? null;
+    discountGid = existing?.discountGid ?? null;
 
     // Step 1: Create selling plan group (unless one already exists)
     if (!sellingPlanGid || !sellingPlanId) {
@@ -98,10 +104,31 @@ export async function enablePreorder(input: EnablePreorderInput): Promise<SagaRe
       message,
       shipDate: shipDate?.toISOString() ?? null,
       sellingPlanId,
+      discountPercent: discount,
     });
     metafieldsWritten = true;
 
-    // Step 4: Upsert DB config
+    // Step 4: Reconcile the automatic discount.
+    // - merchant wants a %, no discount exists -> create
+    // - merchant wants a %, discount exists but % changed -> recreate
+    // - merchant wants none, discount exists -> delete
+    const wantDiscount = discount !== null;
+    const haveDiscount = discountGid !== null;
+    const percentChanged = existing?.discountPercent !== discount;
+
+    if (wantDiscount && (!haveDiscount || percentChanged)) {
+      if (haveDiscount && discountGid) {
+        await deletePreorderDiscount(admin, discountGid).catch(() => {});
+        discountGid = null;
+      }
+      discountGid = await createPreorderDiscount(admin, productId, discount);
+      createdDiscountThisCall = true;
+    } else if (!wantDiscount && haveDiscount && discountGid) {
+      await deletePreorderDiscount(admin, discountGid).catch(() => {});
+      discountGid = null;
+    }
+
+    // Step 5: Upsert DB config
     await prisma.preorderConfig.upsert({
       where: {
         shopId_productId_variantId: { shopId, productId, variantId: normalizedVariantId },
@@ -116,6 +143,8 @@ export async function enablePreorder(input: EnablePreorderInput): Promise<SagaRe
         sellingPlanGid,
         sellingPlanId,
         policySnapshot,
+        discountGid,
+        discountPercent: discount,
       },
       update: {
         enabled: true,
@@ -124,10 +153,12 @@ export async function enablePreorder(input: EnablePreorderInput): Promise<SagaRe
         sellingPlanGid,
         sellingPlanId,
         policySnapshot,
+        discountGid,
+        discountPercent: discount,
       },
     });
 
-    // Step 5: Tag product
+    // Step 6: Tag product
     await tagProduct(admin, productId, "preorder");
 
     return { success: true, sellingPlanGid };
@@ -143,6 +174,10 @@ export async function enablePreorder(input: EnablePreorderInput): Promise<SagaRe
     // Delete the selling plan group only if this call created it
     if (createdGroupThisCall && sellingPlanGid) {
       await deleteSellingPlanGroup(admin, sellingPlanGid).catch(() => {});
+    }
+    // Delete the discount only if this call created it
+    if (createdDiscountThisCall && discountGid) {
+      await deletePreorderDiscount(admin, discountGid).catch(() => {});
     }
     const message = err instanceof Error ? err.message : String(err);
     return { success: false, error: message };
@@ -169,6 +204,11 @@ export async function disablePreorder(input: DisablePreorderInput): Promise<Saga
     await deleteSellingPlanGroup(admin, config.sellingPlanGid).catch(() => {});
   }
 
+  // Remove the automatic pre-order discount if present
+  if (config.discountGid) {
+    await deletePreorderDiscount(admin, config.discountGid).catch(() => {});
+  }
+
   // Restore the merchant's original inventory policies
   const snapshot = config.policySnapshot as PolicySnapshot | null;
   if (snapshot && snapshot.length > 0) {
@@ -179,19 +219,27 @@ export async function disablePreorder(input: DisablePreorderInput): Promise<Saga
     where: {
       shopId_productId_variantId: { shopId, productId, variantId: normalizedVariantId },
     },
-    data: { enabled: false, sellingPlanGid: null, sellingPlanId: null, policySnapshot: Prisma.JsonNull },
+    data: {
+      enabled: false,
+      sellingPlanGid: null,
+      sellingPlanId: null,
+      discountGid: null,
+      discountPercent: null,
+      policySnapshot: Prisma.JsonNull,
+    },
   });
 
   return { success: true, sellingPlanGid: "" };
 }
 
 export async function updatePreorder(input: UpdatePreorderInput): Promise<UpdatePreorderResult> {
-  const { shopId, productId, variantId = "", message, shipDate, admin } = input;
+  const { shopId, productId, variantId = "", message, shipDate, discountPercent, admin } = input;
   const normalizedVariantId = variantId || "";
+  const discount = normalizeDiscount(discountPercent);
 
   const config = await prisma.preorderConfig.findUnique({
     where: { shopId_productId_variantId: { shopId, productId, variantId: normalizedVariantId } },
-    select: { id: true, shipDate: true, sellingPlanId: true, enabled: true },
+    select: { id: true, shipDate: true, sellingPlanId: true, enabled: true, discountGid: true, discountPercent: true },
   });
 
   if (!config) return { success: false, error: "Pre-order config not found" };
@@ -209,11 +257,29 @@ export async function updatePreorder(input: UpdatePreorderInput): Promise<Update
       message,
       shipDate: shipDate?.toISOString() ?? null,
       sellingPlanId: config.sellingPlanId,
+      discountPercent: discount,
     });
+
+    // Reconcile the automatic discount for the new percentage.
+    let discountGid = config.discountGid;
+    const wantDiscount = discount !== null;
+    const haveDiscount = discountGid !== null;
+    const percentChanged = config.discountPercent !== discount;
+
+    if (wantDiscount && (!haveDiscount || percentChanged)) {
+      if (haveDiscount && discountGid) {
+        await deletePreorderDiscount(admin, discountGid).catch(() => {});
+        discountGid = null;
+      }
+      discountGid = await createPreorderDiscount(admin, productId, discount);
+    } else if (!wantDiscount && haveDiscount && discountGid) {
+      await deletePreorderDiscount(admin, discountGid).catch(() => {});
+      discountGid = null;
+    }
 
     await prisma.preorderConfig.update({
       where: { shopId_productId_variantId: { shopId, productId, variantId: normalizedVariantId } },
-      data: { message, shipDate },
+      data: { message, shipDate, discountGid, discountPercent: discount },
     });
 
     return { success: true, oldShipDate, newShipDate: shipDate };
@@ -405,7 +471,7 @@ async function writePreorderMetafields(
   admin: AdminGraphQL,
   productId: string,
   variantId: string,
-  data: { enabled: boolean; message: string; shipDate: string | null; sellingPlanId?: string | null },
+  data: { enabled: boolean; message: string; shipDate: string | null; sellingPlanId?: string | null; discountPercent?: number | null },
 ): Promise<void> {
   const ownerId = variantId || productId;
   const metafields: Array<{ ownerId: string; namespace: string; key: string; value: string; type: string }> = [
@@ -445,6 +511,15 @@ async function writePreorderMetafields(
       type: "single_line_text_field",
     });
   }
+  if (data.discountPercent) {
+    metafields.push({
+      ownerId: productId, // discount is always product-wide
+      namespace: METAFIELD_NAMESPACE,
+      key: "discount_percent",
+      value: String(data.discountPercent),
+      type: "number_integer",
+    });
+  }
 
   const res = await admin.graphql(
     `#graphql
@@ -463,22 +538,24 @@ async function writePreorderMetafields(
     throw new Error(`Metafield write failed: ${JSON.stringify(errors)}`);
   }
 
-  // When no ship_date, delete any previously stored value so Liquid shows the
-  // "Ships when available" fallback instead of a stale date.
+  // When no ship_date or discount_percent, delete any stale values.
+  const toDelete: Array<{ ownerId: string; namespace: string; key: string }> = [];
   if (!data.shipDate) {
+    toDelete.push({ ownerId, namespace: METAFIELD_NAMESPACE, key: "ship_date" });
+  }
+  if (!data.discountPercent) {
+    toDelete.push({ ownerId: productId, namespace: METAFIELD_NAMESPACE, key: "discount_percent" });
+  }
+  if (toDelete.length > 0) {
     await admin.graphql(
       `#graphql
-      mutation DeleteShipDate($metafields: [MetafieldIdentifierInput!]!) {
+      mutation DeleteStaleMetafields($metafields: [MetafieldIdentifierInput!]!) {
         metafieldsDelete(metafields: $metafields) {
           deletedMetafields { key }
           userErrors { field message }
         }
       }`,
-      {
-        variables: {
-          metafields: [{ ownerId, namespace: METAFIELD_NAMESPACE, key: "ship_date" }],
-        },
-      },
+      { variables: { metafields: toDelete } },
     ).catch(() => {}); // non-fatal — metafield may not exist yet
   }
 }
@@ -508,6 +585,7 @@ async function clearPreorderMetafields(
           { ownerId, namespace: METAFIELD_NAMESPACE, key: "message" },
           { ownerId, namespace: METAFIELD_NAMESPACE, key: "ship_date" },
           { ownerId: productId, namespace: METAFIELD_NAMESPACE, key: "selling_plan_id" },
+          { ownerId: productId, namespace: METAFIELD_NAMESPACE, key: "discount_percent" },
         ],
       },
     },
@@ -528,6 +606,95 @@ async function tagProduct(
       }
     }`,
     { variables: { id: productId, tags: [tag] } },
+  );
+}
+
+// --- Discount helpers ---
+
+// Coerce form input into a normalized discount: either an integer 1-100, or
+// null (no discount). Anything <= 0, blank, or non-numeric collapses to null
+// so the saga never creates a 0% automatic discount.
+function normalizeDiscount(input: number | null | undefined): number | null {
+  if (input == null) return null;
+  const n = typeof input === "string" ? Number(input) : input;
+  if (!Number.isFinite(n)) return null;
+  const pct = Math.round(n);
+  if (pct <= 0 || pct > 100) return null;
+  return pct;
+}
+
+async function fetchProductTitle(admin: AdminGraphQL, productId: string): Promise<string> {
+  const res = await admin.graphql(
+    `#graphql
+    query ProductTitle($id: ID!) { product(id: $id) { title } }`,
+    { variables: { id: productId } },
+  );
+  const json = (await res.json()) as { data?: { product?: { title: string } | null } };
+  return json.data?.product?.title ?? "Pre-order";
+}
+
+// Create a percentage automatic discount scoped to one product. Returns the
+// discount GID. Title like "Pre-order: Cool T-Shirt – 10%".
+async function createPreorderDiscount(
+  admin: AdminGraphQL,
+  productId: string,
+  percent: number,
+): Promise<string> {
+  const productTitle = (await fetchProductTitle(admin, productId)).slice(0, 160);
+  const title = `PreFlow: ${productTitle} – ${percent}% off (${Date.now()})`;
+  const res = await admin.graphql(
+    `#graphql
+    mutation CreatePreorderDiscount($basicDiscount: DiscountAutomaticBasicInput!) {
+      discountAutomaticBasicCreate(automaticBasicDiscount: $basicDiscount) {
+        automaticDiscountNode { id }
+        userErrors { field message }
+      }
+    }`,
+    {
+      variables: {
+        basicDiscount: {
+          title,
+          startsAt: new Date().toISOString(),
+          combinesWith: { productDiscounts: false, shippingDiscounts: false, orderDiscounts: false },
+          customerGets: {
+            value: { percentage: percent / 100 },
+            items: { products: { productsToAdd: [productId] } },
+          },
+        },
+      },
+    },
+  );
+
+  const json = (await res.json()) as {
+    data?: {
+      discountAutomaticBasicCreate?: {
+        automaticDiscountNode?: { id: string } | null;
+        userErrors: Array<{ field: string; message: string }>;
+      };
+    };
+  };
+  const errors = json.data?.discountAutomaticBasicCreate?.userErrors ?? [];
+  if (errors.length > 0) {
+    throw new Error(`Discount creation failed: ${JSON.stringify(errors)}`);
+  }
+  const gid = json.data?.discountAutomaticBasicCreate?.automaticDiscountNode?.id;
+  if (!gid) throw new Error("Discount ID missing from response");
+  return gid;
+}
+
+async function deletePreorderDiscount(
+  admin: AdminGraphQL,
+  discountGid: string,
+): Promise<void> {
+  await admin.graphql(
+    `#graphql
+    mutation DeletePreorderDiscount($id: ID!) {
+      discountDelete(id: $id) {
+        deletedDiscountId
+        userErrors { field message }
+      }
+    }`,
+    { variables: { id: discountGid } },
   );
 }
 

@@ -64,6 +64,11 @@ model PreorderConfig {
   // Numeric ID of the selling plan inside the group — what the storefront
   // submits as the `selling_plan` cart parameter.
   sellingPlanId  String?
+  // GID of the automatic percentage discount scoped to this product. null
+  // means no discount configured for this pre-order.
+  discountGid    String?
+  // Discount percentage (0-100). 0 / null = no discount.
+  discountPercent Int?
   // Variant inventory policies captured before we set CONTINUE, so disable
   // can restore the merchant's original settings. [{ id, policy }]
   policySnapshot Json?

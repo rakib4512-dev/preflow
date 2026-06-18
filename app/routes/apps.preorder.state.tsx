@@ -12,6 +12,7 @@ type StateResponse = {
   message: string;
   ship_date: string | null;
   selling_plan_id: string | null;
+  discount_percent: number | null;
 };
 
 const DISABLED: StateResponse = {
@@ -19,6 +20,7 @@ const DISABLED: StateResponse = {
   message: "",
   ship_date: null,
   selling_plan_id: null,
+  discount_percent: null,
 };
 
 const cache = new Map<string, CacheEntry>();
@@ -120,6 +122,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
           ? config.shipDate.toISOString().split("T")[0]!
           : null,
         selling_plan_id: config.sellingPlanId ?? null,
+        discount_percent: config.discountPercent ?? null,
       }
     : DISABLED;
 

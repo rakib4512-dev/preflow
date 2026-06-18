@@ -6,7 +6,7 @@ embedded = true
 name = "PreFlow"
 
 [access_scopes]
-scopes = "write_products,read_products,write_orders,read_orders,write_fulfillments,read_fulfillments,write_merchant_managed_fulfillment_orders,read_merchant_managed_fulfillment_orders,read_inventory,write_inventory,write_purchase_options"
+scopes = "write_products,read_products,write_orders,read_orders,write_fulfillments,read_fulfillments,write_merchant_managed_fulfillment_orders,read_merchant_managed_fulfillment_orders,read_inventory,write_inventory,write_purchase_options,write_discounts,read_discounts"
 
 # Keep in sync with ApiVersion in app/shopify.server.ts
 [webhooks]
@@ -51,4 +51,4 @@ subpath = "preorder"
 prefix = "apps"
 
 [build]
-automatically_update_urls_on_dev = true
+automatically_update_urls_on_dev = false

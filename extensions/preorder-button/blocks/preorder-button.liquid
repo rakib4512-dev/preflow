@@ -9,6 +9,7 @@
 {% assign preorder_message = product.metafields['$app:preorder'].message.value | default: block.settings.button_text %}
 {% assign preorder_ship_date = product.metafields['$app:preorder'].ship_date.value %}
 {% assign preorder_selling_plan_id = product.metafields['$app:preorder'].selling_plan_id.value %}
+{% assign preorder_discount_percent = product.metafields['$app:preorder'].discount_percent.value %}
 
 {%- if preorder_enabled -%}
 <div
@@ -38,6 +39,24 @@
       product-form-{section.id}). It adds the item to the cart through
       /cart/add.js with the selling plan attached, then redirects.
     {%- endcomment -%}
+    {%- if preorder_discount_percent != blank -%}
+      <div id="preflow-discount-badge" style="
+        display:inline-block;
+        background:#d4edda;
+        color:#155724;
+        font-size:13px;
+        font-weight:600;
+        padding:5px 12px;
+        border-radius:20px;
+        margin-bottom:10px;
+        letter-spacing:0.01em;
+      ">
+        🏷 Pre-order discount: {{ preorder_discount_percent }}% off
+      </div>
+    {%- else -%}
+      <div id="preflow-discount-badge" style="display:none;"></div>
+    {%- endif -%}
+
     <button
       id="preflow-preorder-btn"
       type="button"
@@ -182,6 +201,15 @@
             syncSellingPlanInput(state.selling_plan_id || wrapper.dataset.sellingPlanId);
             var btn = document.getElementById('preflow-preorder-btn');
             if (btn && state.message) btn.textContent = state.message;
+            var discountBadge = document.getElementById('preflow-discount-badge');
+            if (discountBadge) {
+              if (state.discount_percent) {
+                discountBadge.textContent = '🏷 Pre-order discount: ' + state.discount_percent + '% off';
+                discountBadge.style.display = 'inline-block';
+              } else {
+                discountBadge.style.display = 'none';
+              }
+            }
             var shipEl = content.querySelector('.preflow-ship-date');
             var subtextEl = document.getElementById('preflow-preorder-subtext');
             if (state.ship_date) {

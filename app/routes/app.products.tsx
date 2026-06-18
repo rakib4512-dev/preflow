@@ -34,6 +34,7 @@ type ProductItem = {
   preorderEnabled: boolean;
   preorderMessage: string;
   preorderShipDate: string | null;
+  preorderDiscount: number | null;
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
@@ -88,7 +89,7 @@ async function loadProducts(
   const configs = shopRecord
     ? await prisma.preorderConfig.findMany({
         where: { shopId: shopRecord.id },
-        select: { productId: true, variantId: true, enabled: true, message: true, shipDate: true },
+        select: { productId: true, variantId: true, enabled: true, message: true, shipDate: true, discountPercent: true },
       })
     : [];
 
@@ -109,6 +110,7 @@ async function loadProducts(
         preorderEnabled: config?.enabled ?? false,
         preorderMessage: config?.message ?? "Pre-order now",
         preorderShipDate: config?.shipDate ? config.shipDate.toISOString() : null,
+        preorderDiscount: config?.discountPercent ?? null,
       };
     },
   );
@@ -139,6 +141,14 @@ async function handleAction(
   const variantId = (formData.get("variantId") as string) || "";
   const message = (formData.get("message") as string) || "Pre-order now";
   const shipDateStr = formData.get("shipDate") as string | null;
+  const discountRaw = (formData.get("discountPercent") as string) || "";
+
+  // 0 / blank / non-numeric -> null (no discount). Otherwise clamp to 1-100.
+  const parsedDiscount = Number(discountRaw);
+  const discountPercent =
+    discountRaw.trim() !== "" && Number.isFinite(parsedDiscount) && parsedDiscount > 0 && parsedDiscount <= 100
+      ? Math.round(parsedDiscount)
+      : null;
 
   const shopRecord = await prisma.shop.findUnique({
     where: { shop: session.shop },
@@ -157,6 +167,7 @@ async function handleAction(
       variantId,
       message,
       shipDate: shipDateStr ? new Date(shipDateStr) : null,
+      discountPercent,
       admin,
     });
     return Response.json(result);
@@ -221,6 +232,7 @@ async function handleAction(
       variantId,
       message,
       shipDate: newShipDate,
+      discountPercent,
       admin,
     });
 
@@ -268,6 +280,7 @@ export default function ProductsPage() {
   const [isEditMode, setIsEditMode] = useState(false);
   const [message, setMessage] = useState("Pre-order now");
   const [shipDate, setShipDate] = useState("");
+  const [discount, setDiscount] = useState("");
 
   // Confirm-notify modal state
   const [confirmOpen, setConfirmOpen] = useState(false);
@@ -281,6 +294,7 @@ export default function ProductsPage() {
   const pendingProductRef = useRef<ProductItem | null>(null);
   const pendingMessageRef = useRef("");
   const pendingShipDateRef = useRef("");
+  const pendingDiscountRef = useRef("");
 
   useEffect(() => {
     if (fetcher.state === "submitting") {
@@ -316,6 +330,7 @@ export default function ProductsPage() {
     setIsEditMode(false);
     setMessage(product.preorderMessage);
     setShipDate(product.preorderShipDate ? product.preorderShipDate.slice(0, 10) : "");
+    setDiscount(product.preorderDiscount ? String(product.preorderDiscount) : "");
     setModalOpen(true);
   }, []);
 
@@ -324,6 +339,7 @@ export default function ProductsPage() {
     setIsEditMode(true);
     setMessage(product.preorderMessage);
     setShipDate(product.preorderShipDate ? product.preorderShipDate.slice(0, 10) : "");
+    setDiscount(product.preorderDiscount ? String(product.preorderDiscount) : "");
     setModalOpen(true);
   }, []);
 
@@ -334,10 +350,11 @@ export default function ProductsPage() {
     fd.append("productId", selectedProduct.id);
     fd.append("message", message);
     if (shipDate) fd.append("shipDate", shipDate);
+    fd.append("discountPercent", discount);
     setLoadingProductId(selectedProduct.id);
     fetcher.submit(fd, { method: "POST" });
     setModalOpen(false);
-  }, [selectedProduct, message, shipDate, fetcher]);
+  }, [selectedProduct, message, shipDate, discount, fetcher]);
 
   const handleUpdate = useCallback(() => {
     if (!selectedProduct) return;
@@ -345,15 +362,17 @@ export default function ProductsPage() {
     pendingProductRef.current = selectedProduct;
     pendingMessageRef.current = message;
     pendingShipDateRef.current = shipDate;
+    pendingDiscountRef.current = discount;
     const fd = new FormData();
     fd.append("intent", "update");
     fd.append("productId", selectedProduct.id);
     fd.append("message", message);
     if (shipDate) fd.append("shipDate", shipDate);
+    fd.append("discountPercent", discount);
     setLoadingProductId(selectedProduct.id);
     fetcher.submit(fd, { method: "POST" });
     setModalOpen(false);
-  }, [selectedProduct, message, shipDate, fetcher]);
+  }, [selectedProduct, message, shipDate, discount, fetcher]);
 
   const handleConfirmNotify = useCallback(() => {
     const product = pendingProductRef.current;
@@ -363,6 +382,7 @@ export default function ProductsPage() {
     fd.append("productId", product.id);
     fd.append("message", pendingMessageRef.current);
     if (pendingShipDateRef.current) fd.append("shipDate", pendingShipDateRef.current);
+    fd.append("discountPercent", pendingDiscountRef.current);
     fd.append("confirmed", "true");
     setLoadingProductId(product.id);
     fetcher.submit(fd, { method: "POST" });
@@ -441,6 +461,9 @@ export default function ProductsPage() {
                         </BlockStack>
                         <InlineStack gap="300" blockAlign="center">
                           {product.preorderEnabled && <Badge tone="success">Pre-order active</Badge>}
+                          {product.preorderEnabled && product.preorderDiscount != null && (
+                            <Badge tone="info">{`${product.preorderDiscount}% off`}</Badge>
+                          )}
                           {product.preorderEnabled ? (
                             <InlineStack gap="200">
                               <div onClick={(e) => e.stopPropagation()}>
@@ -512,6 +535,18 @@ export default function ProductsPage() {
               autoComplete="off"
               placeholder="YYYY-MM-DD"
               helpText="Displayed below the button as 'Ships by {date}'"
+            />
+            <TextField
+              label="Pre-order discount % (optional)"
+              value={discount}
+              onChange={setDiscount}
+              autoComplete="off"
+              type="number"
+              min={1}
+              max={100}
+              placeholder="e.g. 10"
+              suffix="%"
+              helpText="Creates an automatic discount for this product — no code needed at checkout. Leave blank for no discount."
             />
           </FormLayout>
         </Modal.Section>
