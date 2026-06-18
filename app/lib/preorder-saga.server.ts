@@ -188,48 +188,53 @@ export async function disablePreorder(input: DisablePreorderInput): Promise<Saga
   const { shopId, productId, variantId = "", admin } = input;
   const normalizedVariantId = variantId || "";
 
-  const config = await prisma.preorderConfig.findUnique({
-    where: {
-      shopId_productId_variantId: { shopId, productId, variantId: normalizedVariantId },
-    },
-  });
+  try {
+    const config = await prisma.preorderConfig.findUnique({
+      where: {
+        shopId_productId_variantId: { shopId, productId, variantId: normalizedVariantId },
+      },
+    });
 
-  if (!config) return { success: true, sellingPlanGid: "" };
+    if (!config) return { success: true, sellingPlanGid: "" };
 
-  // Clear metafields first so the storefront immediately stops showing the button
-  await clearPreorderMetafields(admin, productId, normalizedVariantId).catch(() => {});
+    // Clear metafields first so the storefront immediately stops showing the button
+    await clearPreorderMetafields(admin, productId, normalizedVariantId).catch(() => {});
 
-  // Remove selling plan group if present
-  if (config.sellingPlanGid) {
-    await deleteSellingPlanGroup(admin, config.sellingPlanGid).catch(() => {});
+    // Remove selling plan group if present
+    if (config.sellingPlanGid) {
+      await deleteSellingPlanGroup(admin, config.sellingPlanGid).catch(() => {});
+    }
+
+    // Remove the automatic pre-order discount if present
+    if (config.discountGid) {
+      await deletePreorderDiscount(admin, config.discountGid).catch(() => {});
+    }
+
+    // Restore the merchant's original inventory policies
+    const snapshot = config.policySnapshot as PolicySnapshot | null;
+    if (snapshot && snapshot.length > 0) {
+      await restoreVariantInventoryPolicy(admin, productId, snapshot).catch(() => {});
+    }
+
+    await prisma.preorderConfig.update({
+      where: {
+        shopId_productId_variantId: { shopId, productId, variantId: normalizedVariantId },
+      },
+      data: {
+        enabled: false,
+        sellingPlanGid: null,
+        sellingPlanId: null,
+        discountGid: null,
+        discountPercent: null,
+        policySnapshot: null,
+      },
+    });
+
+    return { success: true, sellingPlanGid: "" };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return { success: false, error: message };
   }
-
-  // Remove the automatic pre-order discount if present
-  if (config.discountGid) {
-    await deletePreorderDiscount(admin, config.discountGid).catch(() => {});
-  }
-
-  // Restore the merchant's original inventory policies
-  const snapshot = config.policySnapshot as PolicySnapshot | null;
-  if (snapshot && snapshot.length > 0) {
-    await restoreVariantInventoryPolicy(admin, productId, snapshot).catch(() => {});
-  }
-
-  await prisma.preorderConfig.update({
-    where: {
-      shopId_productId_variantId: { shopId, productId, variantId: normalizedVariantId },
-    },
-    data: {
-      enabled: false,
-      sellingPlanGid: null,
-      sellingPlanId: null,
-      discountGid: null,
-      discountPercent: null,
-      policySnapshot: Prisma.JsonNull,
-    },
-  });
-
-  return { success: true, sellingPlanGid: "" };
 }
 
 export async function updatePreorder(input: UpdatePreorderInput): Promise<UpdatePreorderResult> {

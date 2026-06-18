@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useFetcher, useLoaderData } from "@remix-run/react";
+import { useFetcher, useLoaderData, useRouteError } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -571,6 +571,35 @@ export default function ProductsPage() {
           </Text>
         </Modal.Section>
       </Modal>
+    </Page>
+  );
+}
+
+export function ErrorBoundary() {
+  const error = useRouteError();
+  const message =
+    error instanceof Error
+      ? error.message
+      : typeof error === "string"
+        ? error
+        : JSON.stringify(error);
+  return (
+    <Page>
+      <div style={{ padding: "32px", maxWidth: 680, margin: "0 auto" }}>
+        <div style={{
+          background: "#fff0f0",
+          border: "1.5px solid #fca5a5",
+          borderRadius: 10,
+          padding: "20px 24px",
+        }}>
+          <p style={{ fontWeight: 700, fontSize: 16, color: "#dc2626", margin: "0 0 8px" }}>
+            Products page error
+          </p>
+          <p style={{ fontFamily: "monospace", fontSize: 13, color: "#7f1d1d", margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+            {message}
+          </p>
+        </div>
+      </div>
     </Page>
   );
 }
