@@ -258,6 +258,38 @@ export default function PricingPage() {
   return (
     <Page>
       <TitleBar title="Pricing" />
+      <style>{`
+        .btn-upgrade-featured {
+          background: linear-gradient(135deg, #6366f1 0%, #8b5cf6 100%);
+          box-shadow: 0 4px 14px rgba(99,102,241,0.40);
+          transition: box-shadow 0.2s ease, transform 0.15s ease, opacity 0.15s;
+        }
+        .btn-upgrade-featured:hover:not(:disabled) {
+          box-shadow: 0 6px 20px rgba(99,102,241,0.55);
+          transform: translateY(-2px);
+        }
+        .btn-upgrade-featured:active:not(:disabled) { transform: translateY(0); }
+
+        .btn-upgrade-pro {
+          background: linear-gradient(135deg, #1f2937 0%, #111827 100%);
+          box-shadow: 0 4px 14px rgba(0,0,0,0.18);
+          transition: box-shadow 0.2s ease, transform 0.15s ease, opacity 0.15s;
+        }
+        .btn-upgrade-pro:hover:not(:disabled) {
+          box-shadow: 0 6px 20px rgba(0,0,0,0.28);
+          transform: translateY(-2px);
+        }
+        .btn-upgrade-pro:active:not(:disabled) { transform: translateY(0); }
+
+        .btn-downgrade {
+          transition: background 0.15s, color 0.15s, border-color 0.15s;
+        }
+        .btn-downgrade:hover:not(:disabled) {
+          background: #f9fafb !important;
+          border-color: #d1d5db !important;
+          color: #374151 !important;
+        }
+      `}</style>
       <BlockStack gap="500">
         {billingError && (
           <Banner tone="critical" title="Billing error">
@@ -391,36 +423,47 @@ export default function PricingPage() {
                   <div>
                     {plan !== "FREE" && !isCurrentPlan && (
                       <button
+                        className={isFeatured ? "btn-upgrade-featured" : "btn-upgrade-pro"}
                         onClick={() => handleUpgrade(plan)}
                         disabled={loadingPlan === plan && fetcher.state !== "idle"}
                         style={{
                           width: "100%",
-                          padding: "12px",
+                          padding: "13px 16px",
                           borderRadius: "10px",
                           border: "none",
-                          background: isFeatured ? "#6366f1" : "#111827",
                           color: "#fff",
                           fontWeight: 700,
-                          fontSize: "14px",
+                          fontSize: "15px",
+                          letterSpacing: "0.01em",
                           cursor: "pointer",
-                          boxShadow: isFeatured ? "0 2px 10px rgba(99,102,241,0.35)" : "none",
-                          opacity: (loadingPlan === plan && fetcher.state !== "idle") ? 0.6 : 1,
-                          transition: "opacity 0.15s, transform 0.15s",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          gap: "8px",
+                          opacity: (loadingPlan === plan && fetcher.state !== "idle") ? 0.65 : 1,
                           fontFamily: "inherit",
                         }}
                       >
-                        {(loadingPlan === plan && fetcher.state !== "idle")
-                          ? "Opening checkout…"
-                          : `Upgrade to ${config.name}`}
+                        {(loadingPlan === plan && fetcher.state !== "idle") ? (
+                          "Opening checkout…"
+                        ) : (
+                          <>
+                            <span>Upgrade to {config.name}</span>
+                            <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+                              <path d="M3 8h10M8.5 3.5L13 8l-4.5 4.5" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/>
+                            </svg>
+                          </>
+                        )}
                       </button>
                     )}
                     {plan === "FREE" && currentPlan !== "FREE" && (
                       <button
+                        className="btn-downgrade"
                         onClick={handleCancel}
                         disabled={loadingPlan === "FREE" && fetcher.state !== "idle"}
                         style={{
                           width: "100%",
-                          padding: "12px",
+                          padding: "12px 16px",
                           borderRadius: "10px",
                           border: "1.5px solid #e5e7eb",
                           background: "#fff",
@@ -429,7 +472,6 @@ export default function PricingPage() {
                           fontSize: "14px",
                           cursor: "pointer",
                           opacity: (loadingPlan === "FREE" && fetcher.state !== "idle") ? 0.6 : 1,
-                          transition: "opacity 0.15s",
                           fontFamily: "inherit",
                         }}
                       >
