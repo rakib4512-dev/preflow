@@ -50,9 +50,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
       return { products: [] as ProductItem[], query, loadError: message };
     }
   } catch (outerErr) {
-    if (outerErr instanceof Response) throw outerErr;
-    const message = outerErr instanceof Error ? outerErr.message : String(outerErr);
-    return { products: [] as ProductItem[], query, loadError: `Auth error: ${message}` };
+    // Only rethrow 3xx redirects (Shopify re-auth) — a 4xx/5xx auth response
+    // thrown during loader revalidation would otherwise trigger the error boundary.
+    if (outerErr instanceof Response && outerErr.status >= 300 && outerErr.status < 400) throw outerErr;
+    return { products: [] as ProductItem[], query, loadError: null };
   }
 };
 
@@ -126,20 +127,14 @@ async function loadProducts(
 export const action = async ({ request }: ActionFunctionArgs) => {
   try {
     const { admin, session } = await authenticate.admin(request);
-    try {
-      return await handleAction(request, admin, session);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      console.error("[app.products] action failed:", err);
-      return Response.json({ success: false, error: message });
-    }
-  } catch (outerErr) {
-    // If authenticate.admin throws a Response (redirect for re-auth), let Remix handle it
-    if (outerErr instanceof Response) throw outerErr;
-    // Otherwise surface the auth error as a banner
-    const message = outerErr instanceof Error ? outerErr.message : String(outerErr);
-    console.error("[app.products] authenticate failed in action:", outerErr);
-    return Response.json({ success: false, error: `Auth error: ${message}` });
+    return await handleAction(request, admin, session);
+  } catch (err) {
+    // Only rethrow 3xx redirects (Shopify re-auth flow) — everything else
+    // becomes a banner error so the error boundary is never triggered.
+    if (err instanceof Response && err.status >= 300 && err.status < 400) throw err;
+    const message = err instanceof Error ? err.message : String(err);
+    console.error("[app.products] action failed:", err);
+    return Response.json({ success: false, error: message });
   }
 };
 
