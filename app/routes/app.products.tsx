@@ -1,6 +1,6 @@
 import { useState, useCallback, useEffect, useRef } from "react";
 import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
-import { useFetcher, useLoaderData, useRouteError } from "@remix-run/react";
+import { useFetcher, useLoaderData, useRouteError, isRouteErrorResponse } from "@remix-run/react";
 import {
   Page,
   Layout,
@@ -38,16 +38,21 @@ type ProductItem = {
 };
 
 export const loader = async ({ request }: LoaderFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
   const url = new URL(request.url);
   const query = url.searchParams.get("q") ?? "";
-
   try {
-    return await loadProducts(admin, session, query);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[app.products] loader failed:", err);
-    return { products: [] as ProductItem[], query, loadError: message };
+    const { admin, session } = await authenticate.admin(request);
+    try {
+      return await loadProducts(admin, session, query);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[app.products] loader failed:", err);
+      return { products: [] as ProductItem[], query, loadError: message };
+    }
+  } catch (outerErr) {
+    if (outerErr instanceof Response) throw outerErr;
+    const message = outerErr instanceof Error ? outerErr.message : String(outerErr);
+    return { products: [] as ProductItem[], query, loadError: `Auth error: ${message}` };
   }
 };
 
@@ -119,14 +124,22 @@ async function loadProducts(
 }
 
 export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
   try {
-    return await handleAction(request, admin, session);
-  } catch (err) {
-    // Surface the real error as a banner instead of a blank "Application Error"
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[app.products] action failed:", err);
-    return Response.json({ success: false, error: message });
+    const { admin, session } = await authenticate.admin(request);
+    try {
+      return await handleAction(request, admin, session);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[app.products] action failed:", err);
+      return Response.json({ success: false, error: message });
+    }
+  } catch (outerErr) {
+    // If authenticate.admin throws a Response (redirect for re-auth), let Remix handle it
+    if (outerErr instanceof Response) throw outerErr;
+    // Otherwise surface the auth error as a banner
+    const message = outerErr instanceof Error ? outerErr.message : String(outerErr);
+    console.error("[app.products] authenticate failed in action:", outerErr);
+    return Response.json({ success: false, error: `Auth error: ${message}` });
   }
 };
 
@@ -577,8 +590,9 @@ export default function ProductsPage() {
 
 export function ErrorBoundary() {
   const error = useRouteError();
-  const message =
-    error instanceof Error
+  const message = isRouteErrorResponse(error)
+    ? `${error.status} ${error.statusText || ""} — ${JSON.stringify(error.data)}`
+    : error instanceof Error
       ? error.message
       : typeof error === "string"
         ? error
