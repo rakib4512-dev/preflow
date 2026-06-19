@@ -42,7 +42,7 @@ export type UpdatePreorderResult =
   | { success: false; error: string };
 
 export type SagaResult =
-  | { success: true; sellingPlanGid: string }
+  | { success: true; sellingPlanGid: string; warning?: string }
   | { success: false; error: string };
 
 const METAFIELD_NAMESPACE = "$app:preorder";
@@ -171,7 +171,26 @@ export async function enablePreorder(input: EnablePreorderInput): Promise<SagaRe
     // Step 6: Tag product
     await tagProduct(admin, productId, "preorder");
 
-    return { success: true, sellingPlanGid };
+    // Step 7: Verify inventory policy actually took effect.
+    // For products managed by a third-party fulfillment service, Shopify may
+    // silently ignore the CONTINUE policy update. Detect and warn the merchant
+    // so they aren't surprised when the storefront button fails at checkout.
+    let warning: string | undefined;
+    try {
+      const verified = await fetchVariantPolicies(admin, productId, normalizedVariantId);
+      const stuck = verified.filter((v) => v.policy !== "CONTINUE");
+      if (stuck.length > 0) {
+        warning =
+          "This product's inventory is managed by a third-party fulfillment service. " +
+          "Shopify did not apply the 'Continue selling when out of stock' policy, so " +
+          "customers may see a sold-out error when clicking the pre-order button. " +
+          "Pre-order works correctly on standard Shopify-managed products.";
+      }
+    } catch {
+      // Non-fatal — warning is informational only
+    }
+
+    return { success: true, sellingPlanGid, warning };
   } catch (err) {
     // Rollback: remove metafields so storefront never shows half-state
     if (metafieldsWritten) {

@@ -314,6 +314,7 @@ export default function ProductsPage() {
 
   const [loadingProductId, setLoadingProductId] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [actionWarning, setActionWarning] = useState<string | null>(null);
   const [notifyBanner, setNotifyBanner] = useState<string | null>(null);
 
   // Stable refs so confirm handler closes over fresh values
@@ -325,6 +326,7 @@ export default function ProductsPage() {
   useEffect(() => {
     if (fetcher.state === "submitting") {
       setActionError(null);
+      setActionWarning(null);
     }
     if (fetcher.state === "idle" && fetcher.data) {
       const data = fetcher.data as Record<string, unknown>;
@@ -344,6 +346,9 @@ export default function ProductsPage() {
       }
 
       if (data.success === true) {
+        if (data.warning) {
+          setActionWarning(data.warning as string);
+        }
         if (data.notified) {
           setNotifyBanner("Customers have been queued for ship-date notification emails.");
         }
@@ -446,6 +451,11 @@ export default function ProductsPage() {
               {actionError && (
                 <Banner tone="critical" onDismiss={() => setActionError(null)}>
                   <p>{actionError}</p>
+                </Banner>
+              )}
+              {actionWarning && (
+                <Banner tone="warning" onDismiss={() => setActionWarning(null)}>
+                  <p>{actionWarning}</p>
                 </Banner>
               )}
               {loadError && (
