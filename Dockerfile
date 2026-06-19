@@ -9,9 +9,9 @@ ENV NODE_ENV=production
 
 COPY package.json package-lock.json* ./
 
-# Install all deps (including dev) so vite is available for the build step.
-# Node 20+ satisfies the engines requirement in package.json (>=20.19).
-RUN npm ci --ignore-scripts && npm cache clean --force
+# Node 20 satisfies engines requirement (>=20.19). Install all deps including
+# dev so vite is available for the build step.
+RUN npm ci && npm cache clean --force
 
 COPY . .
 
