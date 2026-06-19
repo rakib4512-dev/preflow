@@ -9,13 +9,14 @@ ENV NODE_ENV=production
 
 COPY package.json package-lock.json* ./
 
-RUN npm ci --omit=dev && npm cache clean --force
-# Remove CLI packages since we don't need them in production by default.
-# Remove this line if you want to run CLI commands in your container.
-RUN npm remove @shopify/cli
+# Install all deps (including dev) so vite is available for the build step
+RUN npm ci && npm cache clean --force
 
 COPY . .
 
 RUN npm run build
+
+# Drop dev deps — vite and other build tools are no longer needed at runtime
+RUN npm prune --omit=dev
 
 CMD ["npm", "run", "docker-start"]
