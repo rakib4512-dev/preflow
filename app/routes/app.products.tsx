@@ -47,7 +47,10 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     const { admin, session } = await authenticate.admin(request);
     return await loadProducts(admin, session, query);
   } catch (err) {
-    if (err instanceof Response && err.status >= 300 && err.status < 400) throw err;
+    // Never throw — parent app.tsx loader handles any auth redirects.
+    // Returning safe data here means the error boundary can never be triggered
+    // by this loader, regardless of what authenticate.admin throws.
+    console.error("[products loader] caught:", err instanceof Error ? err.message : String(err));
     return { products: [] as ProductItem[], query: "", loadError: null };
   }
 };
@@ -598,10 +601,13 @@ export function ErrorBoundary() {
           padding: "20px 24px",
         }}>
           <p style={{ fontWeight: 700, fontSize: 16, color: "#dc2626", margin: "0 0 8px" }}>
-            Products page error
+            Products page error <span style={{ fontWeight: 400, fontSize: 11, color: "#9ca3af" }}>[v7]</span>
           </p>
-          <p style={{ fontFamily: "monospace", fontSize: 13, color: "#7f1d1d", margin: 0, whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-            {message}
+          <p style={{ fontFamily: "monospace", fontSize: 13, color: "#7f1d1d", margin: "0 0 6px", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
+            {isRouteErrorResponse(error) ? `HTTP ${error.status}` : message}
+          </p>
+          <p style={{ fontFamily: "monospace", fontSize: 11, color: "#6b7280", margin: 0 }}>
+            isRouteErrorResponse={String(isRouteErrorResponse(error))}
           </p>
         </div>
       </div>
