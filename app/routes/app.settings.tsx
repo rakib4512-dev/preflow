@@ -3,7 +3,7 @@ import type { ActionFunctionArgs, LoaderFunctionArgs } from "@remix-run/node";
 import { useFetcher, useLoaderData } from "@remix-run/react";
 import { Page } from "@shopify/polaris";
 import { TitleBar } from "@shopify/app-bridge-react";
-import { authenticate, registerWebhooks } from "../shopify.server";
+import { authenticate } from "../shopify.server";
 import prisma from "../db.server";
 
 type Settings = {
@@ -41,12 +41,6 @@ function jsonRes(data: unknown, status = 200): Response {
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const formData = await request.formData();
-  const intent = formData.get("intent") as string | null;
-
-  if (intent === "reregister") {
-    await registerWebhooks({ session });
-    return jsonRes({ reregistered: true });
-  }
 
   const settings: Settings = {
     ownerEmail: (formData.get("ownerEmail") as string) || "",
@@ -75,22 +69,11 @@ export default function SettingsPage() {
   const saved = fetcher.data?.success;
   const isSaving = fetcher.state !== "idle";
 
-  const webhookFetcher = useFetcher<typeof action>();
-
   const [ownerEmail, setOwnerEmail] = useState(data.ownerEmail);
   const [fromEmail, setFromEmail] = useState(data.fromEmail);
   const [cancelMode, setCancelMode] = useState<"auto" | "request">(data.cancelMode);
   const [notificationIntroText, setNotificationIntroText] = useState(data.notificationIntroText);
   const [toast, setToast] = useState(false);
-  const [webhookToast, setWebhookToast] = useState(false);
-
-  const handleReregister = useCallback(() => {
-    const fd = new FormData();
-    fd.append("intent", "reregister");
-    webhookFetcher.submit(fd, { method: "POST" });
-    setWebhookToast(true);
-    setTimeout(() => setWebhookToast(false), 3500);
-  }, [webhookFetcher]);
 
   const handleSave = useCallback(() => {
     const fd = new FormData();
@@ -523,64 +506,6 @@ export default function SettingsPage() {
                 ? "Orders are cancelled and refunded immediately via the original payment method when a buyer requests cancellation."
                 : "Buyers see a confirmation that their request was received. You will be notified by email to review and process manually."}
             </p>
-          </div>
-        </div>
-
-        {/* Webhooks section */}
-        <div className="sf-section">
-          <div className="sf-section-header">
-            <div className="sf-icon-tile sf-icon-tile-green">
-              <svg width="20" height="20" fill="none" viewBox="0 0 24 24">
-                <path d="M18 13v6a2 2 0 01-2 2H5a2 2 0 01-2-2V8a2 2 0 012-2h6" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                <path d="M15 3h6v6M10 14L21 3" stroke="#fff" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </div>
-            <div>
-              <p className="sf-section-title">Webhooks</p>
-              <p className="sf-section-subtitle">Shopify event listeners that power order tracking</p>
-            </div>
-          </div>
-          <hr className="sf-divider" />
-          <div className="sf-info-box" style={{ marginBottom: 16 }}>
-            <span className="sf-info-icon">
-              <svg width="18" height="18" fill="none" viewBox="0 0 24 24">
-                <circle cx="12" cy="12" r="10" stroke="#4f46e5" strokeWidth="1.5"/>
-                <path d="M12 8v4M12 16h.01" stroke="#4f46e5" strokeWidth="2" strokeLinecap="round"/>
-              </svg>
-            </span>
-            <p className="sf-info-text">
-              If the <strong>orders/create</strong> webhook shows an <strong>Invalid URL</strong> error in the Shopify Partner Dashboard,
-              click <strong>Re-register</strong> below to re-point it to this app's live URL. You only need to do this once after moving from dev to production.
-            </p>
-          </div>
-          <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
-            <button
-              className="btn-secondary"
-              onClick={handleReregister}
-              disabled={webhookFetcher.state !== "idle"}
-            >
-              {webhookFetcher.state !== "idle" ? (
-                <>
-                  <span className="btn-save-spinner" style={{ borderColor: "rgba(0,0,0,0.2)", borderTopColor: "#374151" }} />
-                  Registering…
-                </>
-              ) : (
-                <>
-                  <svg width="14" height="14" fill="none" viewBox="0 0 24 24">
-                    <path d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/>
-                  </svg>
-                  Re-register webhooks
-                </>
-              )}
-            </button>
-            {webhookToast && webhookFetcher.data && (
-              <span className="sf-toast-webhook">
-                <svg width="14" height="14" fill="none" viewBox="0 0 24 24">
-                  <path d="M20 6L9 17l-5-5" stroke="#15803d" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
-                </svg>
-                Webhooks re-registered
-              </span>
-            )}
           </div>
         </div>
 
