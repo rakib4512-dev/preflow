@@ -149,6 +149,13 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<Response>
   }
 };
 
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 async function handleAction(
   request: Request,
   admin: Awaited<ReturnType<typeof authenticate.admin>>["admin"],
@@ -175,7 +182,7 @@ async function handleAction(
   });
 
   if (!shopRecord) {
-    return Response.json({ error: "Shop not found" }, { status: 404 });
+    return json({ error: "Shop not found" }, { status: 404 });
   }
 
   if (intent === "enable") {
@@ -189,7 +196,7 @@ async function handleAction(
       discountPercent,
       admin,
     });
-    return Response.json(result);
+    return json(result);
   }
 
   if (intent === "disable") {
@@ -200,7 +207,7 @@ async function handleAction(
       variantId,
       admin,
     });
-    return Response.json(result);
+    return json(result);
   }
 
   if (intent === "update_preview") {
@@ -213,10 +220,10 @@ async function handleAction(
     const oldShipDate = config?.shipDate ?? null;
     const isLater = newShipDate && oldShipDate && newShipDate > oldShipDate;
     if (!isLater) {
-      return Response.json({ needsConfirm: false });
+      return json({ needsConfirm: false });
     }
     const affectedCount = await countAffectedPreorders(shopRecord.id, productId, variantId);
-    return Response.json({ needsConfirm: true, affectedCount });
+    return json({ needsConfirm: true, affectedCount });
   }
 
   if (intent === "update") {
@@ -234,7 +241,7 @@ async function handleAction(
 
     if (isLater && !confirmed) {
       const affectedCount = await countAffectedPreorders(shopRecord.id, productId, variantId);
-      return Response.json({ needsConfirm: true, affectedCount });
+      return json({ needsConfirm: true, affectedCount });
     }
 
     const productRes = await admin.graphql(
@@ -255,7 +262,7 @@ async function handleAction(
       admin,
     });
 
-    if (!result.success) return Response.json(result);
+    if (!result.success) return json(result);
 
     // Enqueue notification if date moved later
     if (isLater && confirmed && config) {
@@ -282,10 +289,10 @@ async function handleAction(
     }
 
     const notified = isLater && confirmed;
-    return Response.json({ success: true, notified });
+    return json({ success: true, notified });
   }
 
-  return Response.json({ error: "Unknown intent" }, { status: 400 });
+  return json({ error: "Unknown intent" }, { status: 400 });
 }
 
 export default function ProductsPage() {
