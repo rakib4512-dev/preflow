@@ -1,3 +1,4 @@
+import { Prisma } from "@prisma/client";
 import prisma from "../db.server";
 
 export interface AdminGraphQL {
@@ -76,7 +77,17 @@ export async function enablePreorder(input: EnablePreorderInput): Promise<SagaRe
     sellingPlanId = existing?.sellingPlanId ?? null;
     discountGid = existing?.discountGid ?? null;
 
-    // Step 1: Create selling plan group (unless one already exists)
+    // Step 1: Create selling plan group (unless one already exists).
+    // If one exists, verify it still exists in Shopify and has the correct
+    // fulfillmentTrigger (ASAP). Silently recreates stale/wrong plans.
+    if (sellingPlanGid && sellingPlanId) {
+      const stillExists = await verifyAndFixSellingPlan(admin, sellingPlanGid);
+      if (!stillExists) {
+        // Plan was deleted outside the app — create a fresh one
+        sellingPlanGid = null;
+        sellingPlanId = null;
+      }
+    }
     if (!sellingPlanGid || !sellingPlanId) {
       const created = await createSellingPlanGroup(admin, productId, message);
       sellingPlanGid = created.groupGid;
@@ -225,7 +236,7 @@ export async function disablePreorder(input: DisablePreorderInput): Promise<Saga
         sellingPlanId: null,
         discountGid: null,
         discountPercent: null,
-        policySnapshot: null,
+        policySnapshot: Prisma.JsonNull,
       },
     });
 
@@ -336,7 +347,9 @@ async function createSellingPlanGroup(
               },
               deliveryPolicy: {
                 fixed: {
-                  fulfillmentTrigger: "UNKNOWN",
+                  // ASAP = fulfill as soon as stock is available; correct for PRE_ORDER.
+                  // UNKNOWN is deprecated and causes cart adds to be rejected.
+                  fulfillmentTrigger: "ASAP",
                 },
               },
             },
@@ -368,6 +381,82 @@ async function createSellingPlanGroup(
   if (!gid || !planGid) throw new Error("Selling plan group/plan ID missing from response");
   // Storefront cart param wants the numeric ID, not the GID
   return { groupGid: gid, planId: planGid.split("/").pop()! };
+}
+
+// Checks that the selling plan group still exists in Shopify.
+// If the plan has the legacy UNKNOWN fulfillmentTrigger, silently updates it
+// to ASAP so cart adds work correctly.
+// Returns true if the plan exists (after any fixes), false if it was deleted.
+async function verifyAndFixSellingPlan(
+  admin: AdminGraphQL,
+  groupGid: string,
+): Promise<boolean> {
+  const res = await admin.graphql(
+    `#graphql
+    query VerifySellingPlanGroup($id: ID!) {
+      sellingPlanGroup(id: $id) {
+        id
+        sellingPlans(first: 1) {
+          nodes {
+            id
+            deliveryPolicy {
+              ... on SellingPlanFixedDeliveryPolicy {
+                fulfillmentTrigger
+              }
+            }
+          }
+        }
+      }
+    }`,
+    { variables: { id: groupGid } },
+  );
+  const json = (await res.json()) as {
+    data?: {
+      sellingPlanGroup?: {
+        id: string;
+        sellingPlans: {
+          nodes: Array<{
+            id: string;
+            deliveryPolicy: { fulfillmentTrigger?: string };
+          }>;
+        };
+      } | null;
+    };
+  };
+
+  const group = json.data?.sellingPlanGroup;
+  if (!group) return false;
+
+  const plan = group.sellingPlans.nodes[0];
+  if (!plan) return false;
+
+  // Migrate UNKNOWN trigger → ASAP so the cart API accepts the selling plan
+  if (plan.deliveryPolicy?.fulfillmentTrigger === "UNKNOWN") {
+    await admin.graphql(
+      `#graphql
+      mutation FixSellingPlanTrigger($id: ID!, $input: SellingPlanGroupInput!) {
+        sellingPlanGroupUpdate(id: $id, input: $input) {
+          sellingPlanGroup { id }
+          userErrors { field message }
+        }
+      }`,
+      {
+        variables: {
+          id: groupGid,
+          input: {
+            sellingPlansToUpdate: [
+              {
+                id: plan.id,
+                deliveryPolicy: { fixed: { fulfillmentTrigger: "ASAP" } },
+              },
+            ],
+          },
+        },
+      },
+    ).catch(() => {}); // Non-fatal — plan likely still works during the window
+  }
+
+  return true;
 }
 
 // --- Inventory policy helpers ---

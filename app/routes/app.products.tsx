@@ -182,7 +182,7 @@ async function handleAction(
   });
 
   if (!shopRecord) {
-    return jsonRes({ error: "Shop not found" }, { status: 404 });
+    return jsonRes({ error: "Shop not found" }, 404);
   }
 
   if (intent === "enable") {
@@ -292,7 +292,7 @@ async function handleAction(
     return jsonRes({ success: true, notified });
   }
 
-  return jsonRes({ error: "Unknown intent" }, { status: 400 });
+  return jsonRes({ error: "Unknown intent" }, 400);
 }
 
 export default function ProductsPage() {
