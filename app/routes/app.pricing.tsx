@@ -75,7 +75,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return { currentPlan: shop.plan as Plan, usage: shop.usageThisCycle };
 };
 
-function json(data: unknown, init?: number | { status?: number; headers?: Record<string, string> }): Response {
+function jsonRes(data: unknown, init?: number | { status?: number; headers?: Record<string, string> }): Response {
   const status = typeof init === "number" ? init : (init?.status ?? 200);
   const extra = typeof init === "object" ? (init?.headers ?? {}) : {};
   return new Response(JSON.stringify(data), {
@@ -149,7 +149,7 @@ async function handleBilling(
       data: { plan: "FREE" },
     });
 
-    return json({ cancelled: true });
+    return jsonRes({ cancelled: true });
   }
 
   const planConfig = PLANS[plan];
@@ -224,11 +224,11 @@ async function handleBilling(
   const json = await res.json();
   const errors = json.data?.appSubscriptionCreate?.userErrors ?? [];
   if (errors.length > 0) {
-    return json({ error: JSON.stringify(errors) }, { status: 400 });
+    return jsonRes({ error: JSON.stringify(errors) }, { status: 400 });
   }
 
   const confirmationUrl: string = json.data?.appSubscriptionCreate?.confirmationUrl;
-  return json({ confirmationUrl });
+  return jsonRes({ confirmationUrl });
 }
 
 export default function PricingPage() {

@@ -149,7 +149,7 @@ export const action = async ({ request }: ActionFunctionArgs): Promise<Response>
   }
 };
 
-function json(data: unknown, status = 200): Response {
+function jsonRes(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "Content-Type": "application/json" },
@@ -182,7 +182,7 @@ async function handleAction(
   });
 
   if (!shopRecord) {
-    return json({ error: "Shop not found" }, { status: 404 });
+    return jsonRes({ error: "Shop not found" }, { status: 404 });
   }
 
   if (intent === "enable") {
@@ -196,7 +196,7 @@ async function handleAction(
       discountPercent,
       admin,
     });
-    return json(result);
+    return jsonRes(result);
   }
 
   if (intent === "disable") {
@@ -207,7 +207,7 @@ async function handleAction(
       variantId,
       admin,
     });
-    return json(result);
+    return jsonRes(result);
   }
 
   if (intent === "update_preview") {
@@ -220,10 +220,10 @@ async function handleAction(
     const oldShipDate = config?.shipDate ?? null;
     const isLater = newShipDate && oldShipDate && newShipDate > oldShipDate;
     if (!isLater) {
-      return json({ needsConfirm: false });
+      return jsonRes({ needsConfirm: false });
     }
     const affectedCount = await countAffectedPreorders(shopRecord.id, productId, variantId);
-    return json({ needsConfirm: true, affectedCount });
+    return jsonRes({ needsConfirm: true, affectedCount });
   }
 
   if (intent === "update") {
@@ -241,7 +241,7 @@ async function handleAction(
 
     if (isLater && !confirmed) {
       const affectedCount = await countAffectedPreorders(shopRecord.id, productId, variantId);
-      return json({ needsConfirm: true, affectedCount });
+      return jsonRes({ needsConfirm: true, affectedCount });
     }
 
     const productRes = await admin.graphql(
@@ -262,7 +262,7 @@ async function handleAction(
       admin,
     });
 
-    if (!result.success) return json(result);
+    if (!result.success) return jsonRes(result);
 
     // Enqueue notification if date moved later
     if (isLater && confirmed && config) {
@@ -289,10 +289,10 @@ async function handleAction(
     }
 
     const notified = isLater && confirmed;
-    return json({ success: true, notified });
+    return jsonRes({ success: true, notified });
   }
 
-  return json({ error: "Unknown intent" }, { status: 400 });
+  return jsonRes({ error: "Unknown intent" }, { status: 400 });
 }
 
 export default function ProductsPage() {

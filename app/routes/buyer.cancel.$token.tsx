@@ -28,7 +28,7 @@ type ActionData =
   | { done: true; mode: "auto" | "request" }
   | { error: string };
 
-function json(data: unknown, status = 200): Response {
+function jsonRes(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "Content-Type": "application/json" },
@@ -40,7 +40,7 @@ export const loader = async ({ params }: LoaderFunctionArgs): Promise<Response> 
   const payload = verifyBuyerToken(token);
 
   if (!payload) {
-    return json({ valid: false } satisfies LoaderData);
+    return jsonRes({ valid: false } satisfies LoaderData);
   }
 
   const { orderGid, shop } = payload;
@@ -99,10 +99,10 @@ export const loader = async ({ params }: LoaderFunctionArgs): Promise<Response> 
   }
 
   if (!orderData) {
-    return json({ valid: false } satisfies LoaderData);
+    return jsonRes({ valid: false } satisfies LoaderData);
   }
 
-  return json({
+  return jsonRes({
     valid: true,
     orderGid,
     shop,
@@ -118,7 +118,7 @@ export const loader = async ({ params }: LoaderFunctionArgs): Promise<Response> 
 export const action = async ({ request, params }: ActionFunctionArgs): Promise<Response> => {
   const token = params.token ?? "";
   const payload = verifyBuyerToken(token);
-  if (!payload) return json({ error: "Invalid or expired link." } satisfies ActionData);
+  if (!payload) return jsonRes({ error: "Invalid or expired link." } satisfies ActionData);
 
   const { orderGid, shop } = payload;
 
@@ -126,7 +126,7 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<R
     where: { shop },
     select: { id: true, settings: true },
   });
-  if (!shopRecord) return json({ error: "Shop not found." } satisfies ActionData);
+  if (!shopRecord) return jsonRes({ error: "Shop not found." } satisfies ActionData);
 
   const settings = (shopRecord.settings ?? {}) as Record<string, unknown>;
   const cancelMode = (settings.cancelMode as string | undefined) === "request" ? "request" : "auto";
@@ -138,7 +138,7 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<R
   try {
     ({ admin } = await unauthenticated.admin(shop));
   } catch {
-    return json({
+    return jsonRes({
       error: "We couldn't process your request automatically. Please contact the store directly.",
     } satisfies ActionData);
   }
@@ -151,9 +151,9 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<R
     data?: { order?: { displayFulfillmentStatus: string; email?: string; lineItems: { nodes: Array<{ title: string }> } } | null };
   };
   const orderCheck = checkJson.data?.order;
-  if (!orderCheck) return json({ error: "Order not found." } satisfies ActionData);
+  if (!orderCheck) return jsonRes({ error: "Order not found." } satisfies ActionData);
   if (["FULFILLED", "RESTOCKED"].includes(orderCheck.displayFulfillmentStatus)) {
-    return json({ error: "This order has already been fulfilled and cannot be cancelled." } satisfies ActionData);
+    return jsonRes({ error: "This order has already been fulfilled and cannot be cancelled." } satisfies ActionData);
   }
 
   const productTitle = orderCheck.lineItems.nodes[0]?.title ?? orderGid;
@@ -178,7 +178,7 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<R
     };
     const cancelErrors = cancelJson.data?.orderCancel?.orderCancelUserErrors ?? [];
     if (cancelErrors.length > 0) {
-      return json({ error: cancelErrors[0].message } satisfies ActionData);
+      return jsonRes({ error: cancelErrors[0].message } satisfies ActionData);
     }
 
     await prisma.customerNotification.upsert({
@@ -205,7 +205,7 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<R
       await resend.emails.send({ from: "PreFlow <onboarding@resend.dev>", to: ownerEmail, subject, html, text }).catch(() => {});
     }
 
-    return json({ done: true, mode: "auto" } satisfies ActionData);
+    return jsonRes({ done: true, mode: "auto" } satisfies ActionData);
   } else {
     // Request mode — log and notify merchant
     await prisma.customerNotification.upsert({
@@ -231,7 +231,7 @@ export const action = async ({ request, params }: ActionFunctionArgs): Promise<R
       await resend.emails.send({ from: "PreFlow <onboarding@resend.dev>", to: ownerEmail, subject, html, text }).catch(() => {});
     }
 
-    return json({ done: true, mode: "request" } satisfies ActionData);
+    return jsonRes({ done: true, mode: "request" } satisfies ActionData);
   }
 };
 

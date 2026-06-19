@@ -31,7 +31,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
-function json(data: unknown, status = 200): Response {
+function jsonRes(data: unknown, status = 200): Response {
   return new Response(JSON.stringify(data), {
     status,
     headers: { "Content-Type": "application/json" },
@@ -45,7 +45,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (intent === "reregister") {
     await registerWebhooks({ session });
-    return json({ reregistered: true });
+    return jsonRes({ reregistered: true });
   }
 
   const settings: Settings = {
@@ -66,7 +66,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     data: { settings: merged },
   });
 
-  return json({ success: true });
+  return jsonRes({ success: true });
 };
 
 export default function SettingsPage() {

@@ -23,7 +23,7 @@ const DISABLED: StateResponse = {
   discount_percent: null,
 };
 
-function json(data: unknown, init?: number | { status?: number; headers?: Record<string, string> }): Response {
+function jsonRes(data: unknown, init?: number | { status?: number; headers?: Record<string, string> }): Response {
   const status = typeof init === "number" ? init : (init?.status ?? 200);
   const extra = typeof init === "object" ? (init?.headers ?? {}) : {};
   return new Response(JSON.stringify(data), {
@@ -59,14 +59,14 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
     context.session?.shop ?? url.searchParams.get("shop") ?? "";
 
   if (!shopDomain) {
-    return json(DISABLED, { status: 400 });
+    return jsonRes(DISABLED, { status: 400 });
   }
 
   const variantIdRaw = url.searchParams.get("variant_id");
   const productIdRaw = url.searchParams.get("product_id");
 
   if (!variantIdRaw) {
-    return json(DISABLED);
+    return jsonRes(DISABLED);
   }
 
   const variantGid = variantIdRaw.startsWith("gid://")
@@ -82,7 +82,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   const cached = getCached(cacheKey);
   if (cached) {
     updateHeartbeat(shopDomain).catch(() => {});
-    return json(cached, { headers: { "Cache-Control": "no-store" } });
+    return jsonRes(cached, { headers: { "Cache-Control": "no-store" } });
   }
 
   const shopRecord = await prisma.shop.findUnique({
@@ -91,7 +91,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   });
 
   if (!shopRecord) {
-    return json(DISABLED);
+    return jsonRes(DISABLED);
   }
 
   updateHeartbeat(shopDomain).catch(() => {});
@@ -137,7 +137,7 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
 
   setCached(cacheKey, state);
 
-  return json(state, {
+  return jsonRes(state, {
     headers: { "Cache-Control": "no-store" },
   });
 };
