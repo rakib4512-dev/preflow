@@ -60,8 +60,14 @@ async function loadProducts(
   session: Awaited<ReturnType<typeof authenticate.admin>>["session"],
   query: string,
 ) {
-  // Shopify product search and the shop lookup are independent — run together
-  const [res, shopRecord] = await Promise.all([
+  // Resolve the shopId first (fast local DB) so we can immediately fan-out
+  // the Shopify GraphQL call AND the preorder config lookup in parallel.
+  const shopRecord = await prisma.shop.findUnique({
+    where: { shop: session.shop },
+    select: { id: true },
+  });
+
+  const [res, configs] = await Promise.all([
     admin.graphql(
       `#graphql
       query SearchProducts($query: String!) {
@@ -70,7 +76,7 @@ async function loadProducts(
             node {
               id
               title
-              featuredImage { url altText }
+              featuredImage { url }
               variants(first: 10) {
                 edges {
                   node { id title }
@@ -82,24 +88,18 @@ async function loadProducts(
       }`,
       { variables: { query: query || "status:active" } },
     ),
-    prisma.shop.findUnique({
-      where: { shop: session.shop },
-      select: { id: true },
-    }),
+    shopRecord
+      ? prisma.preorderConfig.findMany({
+          where: { shopId: shopRecord.id },
+          select: { productId: true, variantId: true, enabled: true, message: true, shipDate: true, discountPercent: true },
+        })
+      : Promise.resolve([]),
   ]);
 
-  const json = await res.json();
-
-  const configs = shopRecord
-    ? await prisma.preorderConfig.findMany({
-        where: { shopId: shopRecord.id },
-        select: { productId: true, variantId: true, enabled: true, message: true, shipDate: true, discountPercent: true },
-      })
-    : [];
-
+  const gqlJson = await res.json();
   const configByProduct = new Map(configs.map((c) => [c.productId, c]));
 
-  const products: ProductItem[] = (json.data?.products?.edges ?? []).map(
+  const products: ProductItem[] = (gqlJson.data?.products?.edges ?? []).map(
     (edge: { node: { id: string; title: string; featuredImage: { url: string } | null; variants: { edges: Array<{ node: { id: string; title: string } }> } } }) => {
       const node = edge.node;
       const config = configByProduct.get(node.id);
