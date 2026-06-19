@@ -122,18 +122,30 @@ async function loadProducts(
   return { products, query, loadError: null as string | null };
 }
 
-export const action = async ({ request }: ActionFunctionArgs) => {
+export const action = async ({ request }: ActionFunctionArgs): Promise<Response> => {
+  // Outer catch exists solely because the inner catch block itself could throw
+  // (e.g. if Response.json or JSON.stringify failed for any reason).
   try {
-    const { admin, session } = await authenticate.admin(request);
-    return await handleAction(request, admin, session);
-  } catch (err) {
-    // Return all Responses (including auth redirects) rather than throwing them.
-    // Remix handles 3xx returned from a fetcher action the same as thrown ones
-    // (performs navigation), but returning means the error boundary is never triggered.
-    if (err instanceof Response) return err;
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[app.products] action failed:", err);
-    return Response.json({ success: false, error: message });
+    try {
+      const { admin, session } = await authenticate.admin(request);
+      return await handleAction(request, admin, session);
+    } catch (err) {
+      if (err instanceof Response) return err;
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[app.products] action error:", err instanceof Error ? err.stack : String(err));
+      // Use raw Response constructor — unlike Response.json(), it cannot throw.
+      return new Response(JSON.stringify({ success: false, error: message }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  } catch (outerErr) {
+    const msg = outerErr instanceof Error ? outerErr.message : String(outerErr);
+    console.error("[app.products] action OUTER catch (inner catch threw):", msg);
+    return new Response(JSON.stringify({ success: false, error: "Internal server error" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 };
 
@@ -584,31 +596,49 @@ export default function ProductsPage() {
 
 export function ErrorBoundary() {
   const error = useRouteError();
-  const message = isRouteErrorResponse(error)
-    ? `${error.status} ${error.statusText || ""} — ${JSON.stringify(error.data)}`
-    : error instanceof Error
-      ? error.message
-      : typeof error === "string"
-        ? error
-        : JSON.stringify(error);
+  const isResponse = isRouteErrorResponse(error);
+
+  let detail = "";
+  try {
+    if (isResponse) {
+      detail = `status: ${error.status}\nstatusText: ${error.statusText || "(none)"}\ndata: ${JSON.stringify(error.data, null, 2)}`;
+    } else if (error instanceof Error) {
+      const extra = JSON.stringify(error, Object.getOwnPropertyNames(error), 2);
+      detail = extra;
+    } else {
+      detail = JSON.stringify(error, null, 2);
+    }
+  } catch {
+    detail = String(error);
+  }
+
   return (
     <Page>
-      <div style={{ padding: "32px", maxWidth: 680, margin: "0 auto" }}>
+      <div style={{ padding: "32px", maxWidth: 760, margin: "0 auto" }}>
         <div style={{
           background: "#fff0f0",
           border: "1.5px solid #fca5a5",
           borderRadius: 10,
           padding: "20px 24px",
         }}>
-          <p style={{ fontWeight: 700, fontSize: 16, color: "#dc2626", margin: "0 0 8px" }}>
-            Products page error <span style={{ fontWeight: 400, fontSize: 11, color: "#9ca3af" }}>[v7]</span>
+          <p style={{ fontWeight: 700, fontSize: 16, color: "#dc2626", margin: "0 0 4px" }}>
+            Products page error <span style={{ fontWeight: 400, fontSize: 11, color: "#9ca3af" }}>[v8]</span>
           </p>
-          <p style={{ fontFamily: "monospace", fontSize: 13, color: "#7f1d1d", margin: "0 0 6px", whiteSpace: "pre-wrap", wordBreak: "break-all" }}>
-            {isRouteErrorResponse(error) ? `HTTP ${error.status}` : message}
+          <p style={{ fontFamily: "monospace", fontSize: 11, color: "#6b7280", margin: "0 0 10px" }}>
+            isRouteErrorResponse: {String(isResponse)}
           </p>
-          <p style={{ fontFamily: "monospace", fontSize: 11, color: "#6b7280", margin: 0 }}>
-            isRouteErrorResponse={String(isRouteErrorResponse(error))}
-          </p>
+          <pre style={{
+            fontFamily: "monospace",
+            fontSize: 11,
+            color: "#7f1d1d",
+            margin: 0,
+            whiteSpace: "pre-wrap",
+            wordBreak: "break-all",
+            maxHeight: 400,
+            overflow: "auto",
+          }}>
+            {detail}
+          </pre>
         </div>
       </div>
     </Page>
