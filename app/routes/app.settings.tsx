@@ -31,6 +31,13 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   };
 };
 
+function json(data: unknown, status = 200): Response {
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json" },
+  });
+}
+
 export const action = async ({ request }: ActionFunctionArgs) => {
   const { session } = await authenticate.admin(request);
   const formData = await request.formData();
@@ -38,7 +45,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
 
   if (intent === "reregister") {
     await registerWebhooks({ session });
-    return Response.json({ reregistered: true });
+    return json({ reregistered: true });
   }
 
   const settings: Settings = {
@@ -59,7 +66,7 @@ export const action = async ({ request }: ActionFunctionArgs) => {
     data: { settings: merged },
   });
 
-  return Response.json({ success: true });
+  return json({ success: true });
 };
 
 export default function SettingsPage() {

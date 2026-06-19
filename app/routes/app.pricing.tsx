@@ -75,14 +75,36 @@ export const loader = async ({ request }: LoaderFunctionArgs) => {
   return { currentPlan: shop.plan as Plan, usage: shop.usageThisCycle };
 };
 
-export const action = async ({ request }: ActionFunctionArgs) => {
-  const { admin, session } = await authenticate.admin(request);
+function json(data: unknown, init?: number | { status?: number; headers?: Record<string, string> }): Response {
+  const status = typeof init === "number" ? init : (init?.status ?? 200);
+  const extra = typeof init === "object" ? (init?.headers ?? {}) : {};
+  return new Response(JSON.stringify(data), {
+    status,
+    headers: { "Content-Type": "application/json", ...extra },
+  });
+}
+
+export const action = async ({ request }: ActionFunctionArgs): Promise<Response> => {
   try {
-    return await handleBilling(admin, session, await request.formData());
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[app.pricing] action failed:", err);
-    return Response.json({ error: message });
+    try {
+      const { admin, session } = await authenticate.admin(request);
+      return await handleBilling(admin, session, await request.formData());
+    } catch (err) {
+      if (err instanceof Response) return err;
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[app.pricing] action error:", err instanceof Error ? err.stack : String(err));
+      return new Response(JSON.stringify({ error: message }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+  } catch (outerErr) {
+    const msg = outerErr instanceof Error ? outerErr.message : String(outerErr);
+    console.error("[app.pricing] action OUTER catch:", msg);
+    return new Response(JSON.stringify({ error: "Internal server error" }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
   }
 };
 
@@ -127,7 +149,7 @@ async function handleBilling(
       data: { plan: "FREE" },
     });
 
-    return Response.json({ cancelled: true });
+    return json({ cancelled: true });
   }
 
   const planConfig = PLANS[plan];
@@ -202,11 +224,11 @@ async function handleBilling(
   const json = await res.json();
   const errors = json.data?.appSubscriptionCreate?.userErrors ?? [];
   if (errors.length > 0) {
-    return Response.json({ error: JSON.stringify(errors) }, { status: 400 });
+    return json({ error: JSON.stringify(errors) }, { status: 400 });
   }
 
   const confirmationUrl: string = json.data?.appSubscriptionCreate?.confirmationUrl;
-  return Response.json({ confirmationUrl });
+  return json({ confirmationUrl });
 }
 
 export default function PricingPage() {
