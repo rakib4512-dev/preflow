@@ -801,8 +801,8 @@ async function deletePreorderDiscount(
   await admin.graphql(
     `#graphql
     mutation DeletePreorderDiscount($id: ID!) {
-      discountDelete(id: $id) {
-        deletedDiscountId
+      discountAutomaticDelete(id: $id) {
+        deletedAutomaticDiscountId
         userErrors { field message }
       }
     }`,
